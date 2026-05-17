@@ -1,0 +1,133 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html,
+  body,
+  #root {
+    height: 100%;
+  }
+  body {
+    @apply bg-sand-surface text-ink font-sans antialiased;
+  }
+}
+
+@layer components {
+  .card {
+    @apply rounded-2xl border border-zinc-200/80 bg-white;
+    box-shadow: 0 1px 2px rgba(15, 15, 20, 0.04), 0 8px 24px rgba(15, 15, 20, 0.06);
+  }
+  .card-elevated {
+    @apply rounded-2xl border border-white/20 bg-white;
+    box-shadow: 0 20px 50px -12px rgba(15, 15, 20, 0.18), 0 8px 16px -8px rgba(15, 15, 20, 0.1);
+  }
+  .shadow-card {
+    box-shadow: 0 1px 2px rgba(15, 15, 20, 0.04), 0 8px 24px rgba(15, 15, 20, 0.06);
+  }
+  .shadow-lift {
+    box-shadow: 0 20px 50px -12px rgba(15, 15, 20, 0.18), 0 8px 16px -8px rgba(15, 15, 20, 0.1);
+  }
+  .card-pad {
+    @apply p-5 sm:p-6;
+  }
+
+  .btn {
+    @apply inline-flex items-center justify-center gap-2 rounded-full px-5 py-2.5 text-sm font-bold transition-all duration-200
+      focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-action/40 focus-visible:ring-offset-2
+      disabled:pointer-events-none disabled:opacity-50 active:scale-[0.98];
+  }
+  .btn-primary {
+    @apply btn bg-action text-white shadow-md shadow-action/25 hover:bg-action-hover hover:shadow-lg hover:shadow-action/30;
+  }
+  .btn-secondary {
+    @apply btn border border-zinc-200 bg-white text-ink hover:border-zinc-300 hover:bg-sand;
+  }
+  .btn-ghost {
+    @apply btn text-ink-muted hover:bg-zinc-100 hover:text-ink;
+  }
+  .btn-ghost-light {
+    @apply btn border border-white/25 bg-white/5 text-white backdrop-blur hover:bg-white/10;
+  }
+  .btn-success {
+    @apply btn bg-emerald text-white shadow-md shadow-emerald/20 hover:bg-emerald-deep;
+  }
+  .btn-flare {
+    @apply btn bg-flare text-white shadow-md shadow-flare/25 hover:bg-flare-deep;
+  }
+
+  .input {
+    @apply w-full rounded-xl border border-zinc-200 bg-white py-3 text-sm text-ink transition
+      focus:border-action focus:outline-none focus:ring-2 focus:ring-action/15;
+  }
+  .input-dark {
+    @apply w-full rounded-xl border border-white/10 bg-white/5 py-3 text-sm text-white backdrop-blur
+      placeholder:text-white/40 focus:border-flare focus:outline-none focus:ring-2 focus:ring-flare/20;
+  }
+  .input-with-icon {
+    @apply input pl-11;
+  }
+  .input::placeholder {
+    @apply text-ink-faint;
+  }
+
+  .label {
+    @apply mb-1.5 block text-[11px] font-bold uppercase tracking-wider text-slateiq;
+  }
+  .label-light {
+    @apply mb-1.5 block text-[11px] font-bold uppercase tracking-wider text-white/50;
+  }
+
+  .page-title {
+    @apply font-display text-3xl font-extrabold tracking-tight text-ink sm:text-4xl;
+  }
+  .page-sub {
+    @apply mt-2 max-w-2xl text-base text-ink-muted;
+  }
+
+  .trust-pill {
+    @apply inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/10 px-3 py-1.5 text-xs font-semibold text-white/90 backdrop-blur;
+  }
+  .trust-pill-light {
+    @apply inline-flex items-center gap-2 rounded-full border border-zinc-200 bg-white px-3 py-1.5 text-xs font-semibold text-ink-muted shadow-sm;
+  }
+
+  .badge-accent {
+    @apply inline-block rounded-full bg-action-light px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wider text-action;
+  }
+  .badge-flare {
+    @apply inline-block rounded-full bg-flare-light px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wider text-flare-deep;
+  }
+
+  .hero-headline {
+    @apply font-display text-4xl font-extrabold leading-[1.08] tracking-tight text-white sm:text-5xl lg:text-[3.25rem];
+  }
+  .hero-highlight {
+    @apply text-flare;
+  }
+
+  .nav-glass {
+    @apply border-b border-white/10 bg-charcoal/80 backdrop-blur-xl;
+  }
+
+  .sidebar-dark {
+    @apply flex flex-col border-r border-white/5 bg-charcoal text-white;
+  }
+
+  .stat-tile {
+    @apply rounded-xl border border-zinc-100 bg-zinc-50/80 px-3 py-2.5 text-center transition hover:border-action/20 hover:bg-action-light/30;
+  }
+
+  .job-card {
+    @apply card card-pad relative overflow-hidden transition duration-300;
+  }
+  .job-card:hover {
+    @apply -translate-y-0.5 shadow-lift;
+  }
+  .group:hover .job-card-accent {
+    @apply opacity-100;
+  }
+  .job-card-accent {
+    @apply absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-action via-flare to-emerald opacity-0 transition;
+  }
+}

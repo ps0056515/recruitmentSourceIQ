@@ -1,0 +1,28 @@
+{
+    "name":  "sourceiq",
+    "version":  "0.1.0",
+    "private":  true,
+    "workspaces":  [
+                       "packages/*",
+                       "apps/*"
+                   ],
+    "scripts":  {
+                    "dev":  "concurrently -n api,web -c blue,green \"npm run dev -w @sourceiq/api\" \"npm run dev -w @sourceiq/web\"",
+                    "dev:api":  "npm run dev -w @sourceiq/api",
+                    "dev:web":  "npm run dev -w @sourceiq/web",
+                    "build":  "npm run build -w @sourceiq/shared \u0026\u0026 npm run build -w @sourceiq/api \u0026\u0026 npm run build -w @sourceiq/web",
+                    "infra:up":  "docker compose up -d",
+                    "infra:down":  "docker compose down",
+                    "db:push":  "npm run db:push -w @sourceiq/api",
+                    "db:seed":  "npm run db:seed -w @sourceiq/api",
+                    "fix:encoding":  "node tools/fix-encoding.js",
+                    "test":  "npm run test -w @sourceiq/api",
+                    "test:api":  "npm run test -w @sourceiq/api",
+                    "test:e2e":  "playwright test -c e2e/playwright.config.ts",
+                    "test:all":  "npm run test:api \u0026\u0026 npm run test:e2e"
+                },
+    "devDependencies":  {
+                            "concurrently":  "^9.1.2",
+                            "@playwright/test":  "^1.50.1"
+                        }
+}

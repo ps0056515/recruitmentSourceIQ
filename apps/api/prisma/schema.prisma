@@ -1,0 +1,160 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Workspace {
+  id        String   @id @default(uuid())
+  name      String
+  createdAt DateTime @default(now())
+  users     User[]
+  jobs      Job[]
+  atsConnections AtsConnection[]
+}
+
+model User {
+  id          String    @id @default(uuid())
+  email       String    @unique
+  name        String
+  role        String
+  workspaceId String
+  workspace   Workspace @relation(fields: [workspaceId], references: [id])
+  jobs        Job[]     @relation("JobOwner")
+  createdAt   DateTime  @default(now())
+}
+
+model Job {
+  id           String   @id @default(uuid())
+  workspaceId  String
+  workspace    Workspace @relation(fields: [workspaceId], references: [id])
+  ownerId      String?
+  owner        User?    @relation("JobOwner", fields: [ownerId], references: [id])
+  title        String
+  company      String
+  location     String?
+  parsedJd     Json?
+  searchConfig Json?
+  status       String   @default("DRAFT")
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  searches     SearchRun[]
+  candidates   Candidate[]
+  outreach     OutreachMessage[]
+  shareLinks   ShareLink[]
+}
+
+model SearchRun {
+  id             String   @id @default(uuid())
+  jobId          String
+  job            Job      @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  status         String   @default("RUNNING")
+  sources        String[]
+  sourceProgress Json?
+  totalScanned   Int      @default(0)
+  totalMatched   Int      @default(0)
+  startedAt      DateTime @default(now())
+  completedAt    DateTime?
+}
+
+model Candidate {
+  id             String   @id @default(uuid())
+  jobId          String
+  job            Job      @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  dedupeKey      String
+  name           String
+  headline       String
+  email          String?
+  location       String?
+  matchScore     Float
+  scoreBreakdown Json?
+  gaps           Json
+  strengths      Json
+  aiSummary      String?
+  stage          String   @default("new")
+  contactStatus  String   @default("not_contacted")
+  percentile     Int?
+  salarySignal   String?
+  noticePeriod   String?
+  recency        String?
+  avatarUrl      String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+  sources        CandidateSource[]
+  outreach       OutreachMessage[]
+  inboxReplies   InboxReply[]
+
+  @@unique([jobId, dedupeKey])
+  @@index([jobId, matchScore])
+}
+
+model CandidateSource {
+  id          String    @id @default(uuid())
+  candidateId String
+  candidate   Candidate @relation(fields: [candidateId], references: [id], onDelete: Cascade)
+  source      String
+  externalId  String?
+  profileUrl  String?
+  rawProfile  Json?
+}
+
+model OutreachMessage {
+  id          String    @id @default(uuid())
+  jobId       String
+  job         Job       @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  candidateId String
+  candidate   Candidate @relation(fields: [candidateId], references: [id], onDelete: Cascade)
+  channel     String
+  subject     String?
+  body        String
+  tone        String?
+  status      String    @default("draft")
+  sentAt      DateTime?
+  createdAt   DateTime  @default(now())
+}
+
+model InboxReply {
+  id          String    @id @default(uuid())
+  jobId       String
+  candidateId String
+  candidate   Candidate @relation(fields: [candidateId], references: [id], onDelete: Cascade)
+  channel     String
+  body        String
+  intentLabel String?
+  receivedAt  DateTime  @default(now())
+  draftReply  String?
+}
+
+model ShareLink {
+  id        String   @id @default(uuid())
+  token     String   @unique
+  jobId     String
+  job       Job      @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  filters   Json?
+  expiresAt DateTime?
+  createdAt DateTime @default(now())
+}
+
+model AtsConnection {
+  id          String   @id @default(uuid())
+  workspaceId String
+  workspace   Workspace @relation(fields: [workspaceId], references: [id])
+  provider    String
+  apiKeyEnc   String?
+  config      Json?
+  createdAt   DateTime @default(now())
+}
+
+model AnalyticsEvent {
+  id          String   @id @default(uuid())
+  workspaceId String
+  jobId       String?
+  eventType   String
+  payload     Json
+  createdAt   DateTime @default(now())
+
+  @@index([workspaceId, eventType, createdAt])
+}
