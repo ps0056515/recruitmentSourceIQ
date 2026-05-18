@@ -18,6 +18,7 @@ export async function persistRankedCandidates(jobId: string, ranked: RankedProfi
           name: r.profile.name,
           headline: r.profile.headline,
           email: r.profile.email,
+          phone: r.profile.phone,
           location: r.profile.location,
           matchScore: r.matchScore,
           scoreBreakdown: r.scoreBreakdown,
@@ -44,6 +45,10 @@ export async function persistRankedCandidates(jobId: string, ranked: RankedProfi
           strengths: r.strengths as object,
           aiSummary: r.aiSummary,
           percentile: r.percentile,
+          email: r.profile.email,
+          phone: r.profile.phone,
+          location: r.profile.location,
+          headline: r.profile.headline,
         },
       });
 
@@ -60,7 +65,14 @@ export async function persistRankedCandidates(jobId: string, ranked: RankedProfi
         strengths: r.strengths as string[],
         stage: candidate.stage as never,
         contactStatus: candidate.contactStatus as never,
-        email: candidate.email ?? undefined,
+        email: r.profile.email ?? candidate.email ?? undefined,
+        phone: r.profile.phone ?? candidate.phone ?? undefined,
+        location: r.profile.location ?? candidate.location ?? undefined,
+        linkedInUrl:
+          (r.profile.raw?.linkedInUrl as string | undefined) ??
+          (r.profile.profileUrl?.includes("linkedin") ? r.profile.profileUrl : undefined),
+        githubUrl: r.profile.raw?.githubUrl as string | undefined,
+        portfolioUrl: r.profile.raw?.portfolioUrl as string | undefined,
         aiSummary: r.aiSummary,
         percentile: r.percentile,
         scoreBreakdown: r.scoreBreakdown,
@@ -79,6 +91,13 @@ export async function persistRankedCandidates(jobId: string, ranked: RankedProfi
         strengths: r.strengths,
         stage: "new",
         contactStatus: "not_contacted",
+        email: r.profile.email,
+        phone: r.profile.phone,
+        location: r.profile.location,
+        sourceUrl: r.profile.profileUrl,
+        linkedInUrl: r.profile.raw?.linkedInUrl as string | undefined,
+        githubUrl: r.profile.raw?.githubUrl as string | undefined,
+        portfolioUrl: r.profile.raw?.portfolioUrl as string | undefined,
         aiSummary: r.aiSummary,
       });
     }

@@ -17,14 +17,15 @@ model Workspace {
 }
 
 model User {
-  id          String    @id @default(uuid())
-  email       String    @unique
-  name        String
-  role        String
-  workspaceId String
-  workspace   Workspace @relation(fields: [workspaceId], references: [id])
-  jobs        Job[]     @relation("JobOwner")
-  createdAt   DateTime  @default(now())
+  id           String    @id @default(uuid())
+  email        String    @unique
+  name         String
+  role         String
+  passwordHash String?
+  workspaceId  String
+  workspace    Workspace @relation(fields: [workspaceId], references: [id])
+  jobs         Job[]     @relation("JobOwner")
+  createdAt    DateTime  @default(now())
 }
 
 model Job {
@@ -68,6 +69,7 @@ model Candidate {
   name           String
   headline       String
   email          String?
+  phone          String?
   location       String?
   matchScore     Float
   scoreBreakdown Json?
@@ -102,18 +104,19 @@ model CandidateSource {
 }
 
 model OutreachMessage {
-  id          String    @id @default(uuid())
-  jobId       String
-  job         Job       @relation(fields: [jobId], references: [id], onDelete: Cascade)
-  candidateId String
-  candidate   Candidate @relation(fields: [candidateId], references: [id], onDelete: Cascade)
-  channel     String
-  subject     String?
-  body        String
-  tone        String?
-  status      String    @default("draft")
-  sentAt      DateTime?
-  createdAt   DateTime  @default(now())
+  id                String    @id @default(uuid())
+  jobId             String
+  job               Job       @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  candidateId       String
+  candidate         Candidate @relation(fields: [candidateId], references: [id], onDelete: Cascade)
+  channel           String
+  subject           String?
+  body              String
+  tone              String?
+  status            String    @default("draft")
+  providerMessageId String?
+  sentAt            DateTime?
+  createdAt         DateTime  @default(now())
 }
 
 model InboxReply {

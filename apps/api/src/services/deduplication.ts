@@ -2,12 +2,13 @@ import type { RawCandidateProfile } from "@sourceiq/shared";
 import { createHash } from "crypto";
 
 export function dedupeKey(profile: RawCandidateProfile): string {
-  if (profile.raw?.mock || profile.source === "manual_paste") {
+  if (profile.source === "manual_paste") {
     const name = profile.name.toLowerCase().replace(/\s+/g, " ").trim();
-    if (profile.source === "manual_paste") {
-      const paste = String(profile.raw?.pastedAt ?? profile.raw?.resumeText ?? "").slice(0, 32);
-      return `manual:${name}:${paste}`;
-    }
+    const paste = String(profile.raw?.pastedAt ?? profile.raw?.resumeText ?? "").slice(0, 32);
+    return `manual:${name}:${paste}`;
+  }
+  if (profile.raw?.mock === true) {
+    const name = profile.name.toLowerCase().replace(/\s+/g, " ").trim();
     return `name:${name}`;
   }
   const email = profile.email?.toLowerCase().trim();

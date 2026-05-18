@@ -101,11 +101,11 @@ export function OutreachComposer() {
               className="btn-success"
               disabled={!subject}
               onClick={async () => {
-                await api(`/outreach/send`, {
+                const res = (await api(`/outreach/send`, {
                   method: "POST",
-                  body: JSON.stringify({ candidateId: selected, subject, body }),
-                });
-                showToast("Message sent (demo).");
+                  body: JSON.stringify({ candidateId: selected, subject, body, channel: "email" }),
+                })) as { delivered?: boolean };
+                showToast(res.delivered ? "Message sent." : "Saved — configure SMTP to deliver email.");
               }}
             >
               Send

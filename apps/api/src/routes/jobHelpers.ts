@@ -1,4 +1,5 @@
 import type { ParsedJD, SearchConfig } from "@sourceiq/shared";
+import { normalizeParsedJdFromStored } from "../services/normalizeParsedJd.js";
 
 export function jobToApi(row: {
   id: string;
@@ -18,7 +19,7 @@ export function jobToApi(row: {
     title: row.title,
     company: row.company,
     location: row.location ?? undefined,
-    parsedJd: row.parsedJd as ParsedJD | undefined,
+    parsedJd: normalizeParsedJdFromStored(row.parsedJd),
     searchConfig: row.searchConfig as SearchConfig | undefined,
     status: row.status,
     createdAt: row.createdAt.toISOString(),

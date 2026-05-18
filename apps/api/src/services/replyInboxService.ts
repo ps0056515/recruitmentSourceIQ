@@ -1,4 +1,5 @@
 import type { InboxItem, ReplyIntent } from "@sourceiq/shared";
+import { PROMPTS, inboxDraftReplyUserMessage } from "../config/prompts.js";
 import { prisma } from "../lib/prisma.js";
 import { claudeText } from "../lib/llm.js";
 
@@ -23,10 +24,7 @@ export async function listInbox(jobId?: string): Promise<InboxItem[]> {
 }
 
 export async function labelIntent(body: string): Promise<ReplyIntent> {
-  const t = await claudeText(
-    'Classify recruiter reply intent as exactly one: interested, not_interested, more_info, ambiguous. Reply with one word only.',
-    body,
-  );
+  const t = await claudeText(PROMPTS.inboxIntent.system, body);
   const v = t?.toLowerCase().trim();
   if (v?.includes("not")) return "not_interested";
   if (v?.includes("more")) return "more_info";
@@ -42,8 +40,8 @@ export async function ingestReply(input: {
 }) {
   const intentLabel = await labelIntent(input.body);
   const draftReply = await claudeText(
-    "Draft a short professional recruiter reply.",
-    `Candidate said: ${input.body}\nIntent: ${intentLabel}`,
+    PROMPTS.inboxDraftReply.system,
+    inboxDraftReplyUserMessage(input.body, intentLabel),
   );
   return prisma.inboxReply.create({
     data: {

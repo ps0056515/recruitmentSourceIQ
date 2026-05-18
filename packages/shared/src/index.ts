@@ -30,15 +30,23 @@ export const SOURCE_COLORS: Record<ProfileSource, string> = {
   manual_paste: "#6B4FBB",
 };
 
+export interface CandidateContact {
+  email?: string;
+  phone?: string;
+  location?: string;
+  linkedInUrl?: string;
+  githubUrl?: string;
+  portfolioUrl?: string;
+}
+
 export interface ManualImportResult {
   candidate: Candidate;
   parsedProfile: {
     name: string;
     headline: string;
-    email?: string;
     skills: string[];
     companies: string[];
-  };
+  } & CandidateContact;
 }
 
 export const PRD_SOURCES: ProfileSource[] = [
@@ -147,6 +155,7 @@ export interface RawCandidateProfile {
   name: string;
   headline: string;
   email?: string;
+  phone?: string;
   location?: string;
   skills: string[];
   companies: string[];
@@ -174,6 +183,11 @@ export interface Candidate {
   notes?: string;
   avatarUrl?: string;
   email?: string;
+  phone?: string;
+  location?: string;
+  linkedInUrl?: string;
+  githubUrl?: string;
+  portfolioUrl?: string;
   aiSummary?: string;
   percentile?: number;
   scoreBreakdown?: Record<string, number>;

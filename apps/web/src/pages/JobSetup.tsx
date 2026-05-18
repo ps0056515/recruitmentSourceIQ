@@ -102,11 +102,27 @@ export function JobSetup() {
   );
 }
 
-function ReqList({ title, items }: { title: string; items: string[] }) {
+type ReqItem = string | { id?: string; label?: string; category?: string };
+
+function reqLabel(item: ReqItem): string {
+  if (typeof item === "string") return item;
+  return String(item.label ?? "");
+}
+
+function reqKey(item: ReqItem, index: number): string {
+  if (typeof item === "string") return item;
+  return item.id ?? `req-${index}-${reqLabel(item)}`;
+}
+
+function ReqList({ title, items }: { title: string; items: ReqItem[] }) {
   return (
     <div>
       <p className="text-xs font-semibold uppercase text-slateiq">{title}</p>
-      <ul className="mt-1 space-y-1">{items.map((x) => <li key={x} className="text-ink/90">• {x}</li>)}</ul>
+      <ul className="mt-1 space-y-1">
+        {items.map((x, i) => (
+          <li key={reqKey(x, i)} className="text-ink/90">• {reqLabel(x)}</li>
+        ))}
+      </ul>
     </div>
   );
 }

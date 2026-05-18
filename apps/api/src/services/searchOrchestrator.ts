@@ -29,13 +29,14 @@ export async function executeSearch(jobId: string, sources: ProfileSource[], con
   const connectors = getConnectors(sources);
   let totalScanned = 0;
   const rawAll: RawCandidateProfile[] = [];
+  const sourceProgress: Record<string, { found: number; status: string }> = {};
 
   await Promise.all(
     connectors.map(async (connector) => {
       broadcast(jobId, {
         type: "source_progress",
         jobId,
-        progress: { source: connector.source, status: "searching", found: totalScanned, message: `Scanning ${connector.source}` },
+        progress: { source: connector.source, status: "searching", found: 0, message: `Scanning ${connector.source}` },
       });
       try {
         const batch = await connector.search({
@@ -45,18 +46,25 @@ export async function executeSearch(jobId: string, sources: ProfileSource[], con
           limit: Math.ceil(limit / connectors.length),
         });
         totalScanned += batch.length;
+        sourceProgress[connector.source] = { found: batch.length, status: "done" };
         rawAll.push(...batch);
         await publish(KAFKA_TOPICS.CANDIDATES_RAW, { jobId, source: connector.source, profiles: batch });
         broadcast(jobId, {
           type: "source_progress",
           jobId,
-          progress: { source: connector.source, status: "done", found: totalScanned, message: `Done ${connector.source}` },
+          progress: {
+            source: connector.source,
+            status: "done",
+            found: batch.length,
+            message: `Found ${batch.length} on ${connector.source}`,
+          },
         });
       } catch (e) {
+        sourceProgress[connector.source] = { found: 0, status: "error" };
         broadcast(jobId, {
           type: "source_progress",
           jobId,
-          progress: { source: connector.source, status: "error", found: totalScanned, message: String(e) },
+          progress: { source: connector.source, status: "error", found: 0, message: String(e) },
         });
       }
     }),
@@ -68,7 +76,13 @@ export async function executeSearch(jobId: string, sources: ProfileSource[], con
 
   await prisma.searchRun.update({
     where: { id: run.id },
-    data: { status: "COMPLETE", totalScanned, totalMatched: ranked.length, completedAt: new Date() },
+    data: {
+      status: "COMPLETE",
+      totalScanned,
+      totalMatched: ranked.length,
+      sourceProgress: sourceProgress as object,
+      completedAt: new Date(),
+    },
   });
   await prisma.job.update({ where: { id: jobId }, data: { status: "ACTIVE" } });
 

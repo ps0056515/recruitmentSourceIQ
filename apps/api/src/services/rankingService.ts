@@ -1,6 +1,16 @@
 import { randomUUID } from "crypto";
 import type { GapItem, ParsedJD, RawCandidateProfile } from "@sourceiq/shared";
 import { claudeJson, claudeText } from "../lib/llm.js";
+import {
+  PROMPTS,
+  candidateRankingUserMessage,
+  candidateSummaryUserMessage,
+} from "../config/prompts.js";
+import {
+  buildManualMatchSummary,
+  requirementMatched,
+  resolveMustRequirements,
+} from "../config/requirementMatching.js";
 
 export interface RankedProfile {
   profile: RawCandidateProfile;
@@ -25,21 +35,73 @@ function profileEvidenceBlob(profile: RawCandidateProfile): string {
     .toLowerCase();
 }
 
-function requirementMatched(label: string, blob: string): boolean {
-  const norm = label.toLowerCase().trim();
-  if (blob.includes(norm)) return true;
-  const tokens = norm.split(/[\s/+,]+/).filter((t) => t.length > 2);
-  if (tokens.length === 0) return false;
-  const hits = tokens.filter((t) => blob.includes(t));
-  return hits.length >= Math.ceil(tokens.length * 0.5);
+function normalizeGapSeverity(severity: unknown): GapItem["severity"] {
+  const s = String(severity ?? "").toLowerCase();
+  if (s === "must_have" || s === "critical" || s === "major") return "must_have";
+  if (s === "nice_have" || s === "minor" || s === "preferred") return "nice_have";
+  return "info";
+}
+
+function normalizeGapItem(g: GapItem): GapItem {
+  return {
+    id: g.id || randomUUID(),
+    label: String(g.label ?? "").trim(),
+    matched: Boolean(g.matched),
+    severity: normalizeGapSeverity(g.severity),
+    detail: g.detail ? String(g.detail).trim() : undefined,
+  };
+}
+
+/** Keep full JD requirement coverage; enrich with Claude evidence where labels align. */
+function mergeGaps(base: GapItem[], fromClaude: GapItem[]): GapItem[] {
+  if (!fromClaude.length) return base;
+  const claudeByLabel = new Map<string, GapItem>();
+  for (const g of fromClaude.map(normalizeGapItem).filter((x) => x.label)) {
+    claudeByLabel.set(x.label.toLowerCase(), x);
+  }
+
+  const merged = base.map((raw) => {
+    const g = normalizeGapItem(raw);
+    const c = claudeByLabel.get(g.label.toLowerCase());
+    if (c) claudeByLabel.delete(g.label.toLowerCase());
+    return c
+      ? {
+          ...g,
+          matched: c.matched,
+          detail: c.detail ?? g.detail,
+          severity: c.severity !== "info" ? c.severity : g.severity,
+        }
+      : g;
+  });
+
+  for (const c of claudeByLabel.values()) merged.push(c);
+  return merged;
+}
+
+function mergeStrengths(base: string[], fromClaude: string[]): string[] {
+  return dedupeLabels([...fromClaude, ...base]).slice(0, 12);
+}
+
+function dedupeLabels(labels: string[]): string[] {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const label of labels) {
+    const t = label.trim();
+    if (!t) continue;
+    const key = t.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(t);
+  }
+  return out;
 }
 
 function heuristicRank(parsedJd: ParsedJD, profile: RawCandidateProfile): RankedProfile {
   const blob = profileEvidenceBlob(profile);
-  const must = parsedJd.mustHaves.length ? parsedJd.mustHaves : parsedJd.skills;
-  const nice = parsedJd.niceToHaves.slice(0, 3);
+  const must = resolveMustRequirements(parsedJd);
+  const nice = parsedJd.niceToHaves.slice(0, 5);
 
-  const mustGaps: GapItem[] = must.slice(0, 5).map((label) => {
+  const mustGaps: GapItem[] = must.map((label) => {
     const matched = requirementMatched(label, blob);
     return {
       id: randomUUID(),
@@ -70,7 +132,7 @@ function heuristicRank(parsedJd: ParsedJD, profile: RawCandidateProfile): Ranked
 
   const isManual = profile.source === "manual_paste";
   const summary = isManual
-    ? `${profile.name} scored ${score}% vs job brief: ${mustMatched}/${mustGaps.length} must-haves matched from pasted resume.`
+    ? buildManualMatchSummary(profile.name, score, parsedJd.title, mustGaps)
     : `${profile.name} aligns with ${parsedJd.title} based on ${profile.skills.slice(0, 4).join(", ")}.`;
 
   return {
@@ -96,15 +158,16 @@ export async function rankProfiles(
   const claudeResults = await claudeJson<
     Array<{ name: string; matchScore: number; gaps: GapItem[]; strengths: string[]; summary: string }>
   >(
-    "You score candidates 0-100 vs a JD. Return JSON array with name, matchScore, gaps (id,label,severity,matched,detail), strengths, summary.",
-    `JD: ${JSON.stringify(parsedJd)}\nCandidates: ${JSON.stringify(
+    PROMPTS.candidateRanking.system,
+    candidateRankingUserMessage(
+      parsedJd,
       profiles.map((p) => ({
         name: p.name,
         headline: p.headline,
         skills: p.skills,
         resumeExcerpt: String(p.raw?.resumeText ?? p.raw?.excerpt ?? "").slice(0, 4000),
       })),
-    )}`,
+    ),
   );
 
   let ranked: RankedProfile[];
@@ -115,8 +178,8 @@ export async function rankProfiles(
       return {
         ...base,
         matchScore: c?.matchScore ?? base.matchScore,
-        gaps: c?.gaps?.length ? c.gaps : base.gaps,
-        strengths: c?.strengths ?? base.strengths,
+        gaps: mergeGaps(base.gaps, c?.gaps ?? []),
+        strengths: mergeStrengths(base.strengths, c?.strengths ?? []),
         aiSummary: c?.summary ?? base.aiSummary,
       };
     });
@@ -132,10 +195,19 @@ export async function rankProfiles(
 
   for (const r of ranked.slice(0, 5)) {
     const enhanced = await claudeText(
-      "Write one paragraph why candidate matches role and gaps.",
-      `Role: ${parsedJd.title}\nCandidate: ${JSON.stringify(r.profile)}\nScore: ${r.matchScore}`,
+      PROMPTS.candidateSummaryEnhance.system,
+      candidateSummaryUserMessage(parsedJd.title, r.profile, r.matchScore, r.gaps, r.strengths),
     );
-    if (enhanced) r.aiSummary = enhanced;
+    if (enhanced) {
+      r.aiSummary = enhanced;
+      const lines = enhanced
+        .split(/\n+/)
+        .map((l) => l.replace(/^[-*•\d.)]+\s*/, "").trim())
+        .filter((l) => l.length > 8);
+      if (lines.length >= 2) {
+        r.strengths = mergeStrengths(r.strengths, lines);
+      }
+    }
   }
 
   return ranked;

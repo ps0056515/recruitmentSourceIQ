@@ -3,7 +3,12 @@ import { Router } from "express";
 import { prisma } from "../lib/prisma.js";
 import { candidates as memCandidates } from "../store.js";
 import { prismaCandidateToApi } from "../services/candidateMapper.js";
+import { PROMPTS, outreachDraftUserMessage } from "../config/prompts.js";
 import { claudeText } from "../lib/llm.js";
+import { sendEmail, isEmailConfigured } from "../services/emailService.js";
+import { trackEvent } from "../services/analyticsService.js";
+import { DEFAULT_WORKSPACE } from "../lib/config.js";
+import { isDemoMode } from "../lib/config.js";
 
 export const outreachRouter = Router();
 
@@ -12,7 +17,7 @@ async function getCandidate(id: string) {
     const row = await prisma.candidate.findUnique({ where: { id }, include: { sources: true } });
     if (row) return prismaCandidateToApi(row);
   } catch {
-    /* fallback */
+    /* memory store */
   }
   return memCandidates.get(id);
 }
@@ -23,11 +28,12 @@ outreachRouter.post("/draft", async (req, res) => {
   const c = candidateId ? await getCandidate(candidateId) : undefined;
   const name = c?.name ?? "there";
   const roleHint = c?.headline ?? "this opportunity";
+  const recruiterName = req.user?.email?.split("@")[0] ?? "Recruiting team";
 
   const claudeDraft = c
     ? await claudeText(
-        "Write a short recruiter outreach email. Return JSON: { subject, body }",
-        `Candidate: ${c.name}, ${c.headline}. Role fit score: ${c.matchScore}. Tone: ${tone}. Strengths: ${c.strengths.join("; ")}`,
+        PROMPTS.outreachDraft.system,
+        outreachDraftUserMessage(c.name, c.headline, c.matchScore, tone, c.strengths),
       )
     : null;
 
@@ -39,7 +45,7 @@ outreachRouter.post("/draft", async (req, res) => {
     `Our team flagged strong overlap on delivery and communication — would you be open to a 20-minute intro this week?`,
     "",
     `Best,`,
-    `Demo Recruiter`,
+    recruiterName,
   ].join("\n");
 
   if (claudeDraft) {
@@ -62,29 +68,64 @@ outreachRouter.post("/send", async (req, res) => {
   const candidateId = String(req.body?.candidateId ?? "");
   const subject = String(req.body?.subject ?? "");
   const body = String(req.body?.body ?? "");
+  const channel = String(req.body?.channel ?? "email");
   const c = candidateId ? await getCandidate(candidateId) : undefined;
   if (!c) return res.status(404).json({ error: "candidate_not_found" });
 
+  let providerMessageId: string | undefined;
+  let deliveryStatus: "sent" | "queued" = "sent";
+
+  if (channel === "email" && c.email) {
+    if (isEmailConfigured()) {
+      try {
+        const sent = await sendEmail({ to: c.email, subject, body });
+        providerMessageId = sent.messageId;
+      } catch (e) {
+        console.error("[outreach/send]", e);
+        return res.status(502).json({ error: "email_delivery_failed" });
+      }
+    } else if (!isDemoMode()) {
+      return res.status(503).json({
+        error: "email_not_configured",
+        message: "Set SMTP_HOST, SMTP_USER, SMTP_PASS to send real email.",
+      });
+    } else {
+      deliveryStatus = "queued";
+    }
+  } else if (channel === "email" && !c.email) {
+    return res.status(400).json({ error: "candidate_email_missing" });
+  }
+
   try {
-    await prisma.outreachMessage.create({
+    const row = await prisma.outreachMessage.create({
       data: {
         jobId: c.jobId,
         candidateId: c.id,
-        channel: "email",
+        channel,
         subject,
         body,
-        status: "sent",
+        status: deliveryStatus,
         sentAt: new Date(),
+        providerMessageId,
       },
     });
-    const row = await prisma.candidate.update({
+
+    const updated = await prisma.candidate.update({
       where: { id: c.id },
       data: { contactStatus: "sent", stage: c.stage === "new" ? "contacted" : c.stage },
       include: { sources: true },
     });
-    const next = prismaCandidateToApi(row);
+    const next = prismaCandidateToApi(updated);
     memCandidates.set(next.id, next);
-    return res.json({ ok: true, candidate: next, messageId: randomUUID() });
+    await trackEvent(DEFAULT_WORKSPACE, "outreach_sent", { candidateId: c.id, channel }, c.jobId).catch(() => {});
+
+    return res.json({
+      ok: true,
+      candidate: next,
+      messageId: row.id,
+      providerMessageId,
+      delivered: deliveryStatus === "sent" && Boolean(providerMessageId || isDemoMode()),
+    });
   } catch {
     const next = {
       ...c,
@@ -93,7 +134,12 @@ outreachRouter.post("/send", async (req, res) => {
       lastOutreachAt: new Date().toISOString(),
     };
     memCandidates.set(c.id, next);
-    return res.json({ ok: true, candidate: next, messageId: randomUUID() });
+    return res.json({
+      ok: true,
+      candidate: next,
+      messageId: randomUUID(),
+      delivered: isDemoMode(),
+    });
   }
 });
 
@@ -123,13 +169,11 @@ outreachRouter.post("/bulk", async (req, res) => {
         data: { contactStatus: "sent" },
         include: { sources: true },
       });
-      const next = prismaCandidateToApi(row);
-      memCandidates.set(next.id, next);
+      memCandidates.set(c.id, prismaCandidateToApi(row));
+      await trackEvent(DEFAULT_WORKSPACE, "outreach_sent", { candidateId: c.id, bulk: true }, c.jobId);
       results.push({ id, ok: true });
     } catch {
-      const next = { ...c, contactStatus: "sent" as const, lastOutreachAt: new Date().toISOString() };
-      memCandidates.set(c.id, next);
-      results.push({ id, ok: true });
+      results.push({ id, ok: false });
     }
   }
   res.json({ results });

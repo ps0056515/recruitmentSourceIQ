@@ -1,5 +1,6 @@
 import { PrismaClient } from "@prisma/client";
 import { randomUUID } from "crypto";
+import bcrypt from "bcryptjs";
 
 const prisma = new PrismaClient();
 
@@ -189,6 +190,8 @@ const CANDIDATES_JOB1: SeedCandidate[] = [
 ];
 
 async function main() {
+  const passwordHash = await bcrypt.hash(process.env.SEED_PASSWORD ?? "password", 10);
+
   const ws = await prisma.workspace.upsert({
     where: { id: WS },
     create: { id: WS, name: "Acme Talent Co." },
@@ -200,10 +203,11 @@ async function main() {
     create: {
       email: "recruiter@sourceiq.local",
       name: "Alex Morgan",
-      role: "RECRUITER",
+      role: "recruiter",
       workspaceId: ws.id,
+      passwordHash,
     },
-    update: { name: "Alex Morgan" },
+    update: { name: "Alex Morgan", passwordHash },
   });
 
   const job1 = await prisma.job.upsert({

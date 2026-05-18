@@ -23,7 +23,7 @@ describe("sourceIQ API end-to-end flow (in-memory)", () => {
     it("login → me round-trip", async () => {
       const login = await api
         .post("/api/v1/auth/login")
-        .send({ email: "qa@sourceiq.local", role: "recruiter" });
+        .send({ email: "qa@sourceiq.local", password: "password", role: "recruiter" });
       expect(login.status).toBe(200);
       expect(login.body.token).toBeTruthy();
       expect(login.body.user.email).toBe("qa@sourceiq.local");

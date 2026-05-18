@@ -3,8 +3,10 @@ import { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { Box } from "../components/Box";
 import { JobWorkspace } from "../components/JobWorkspace";
-import { GapInline } from "../components/GapInline";
 import { MatchBadge } from "../components/MatchBadge";
+import { MatchBulletList } from "../components/MatchBulletList";
+import { CandidateContactDetails } from "../components/CandidateContactDetails";
+import { contactFromCandidate } from "../lib/candidateContact";
 import { SourceDot } from "../components/SourceDot";
 import { PageHeader } from "../components/ui/PageHeader";
 import { useJob } from "../hooks/useJob";
@@ -265,14 +267,8 @@ export function LiveDiscovery() {
                 <Box className="mt-3">
                   <SourceDot source="manual_paste" label />
                 </Box>
-                {lastImport.candidate.aiSummary ? (
-                  <p className="mt-3 text-sm leading-relaxed text-ink/90">{lastImport.candidate.aiSummary}</p>
-                ) : null}
-                <Box className="mt-3 flex flex-wrap gap-2">
-                  {lastImport.candidate.gaps.slice(0, 6).map((g) => (
-                    <GapInline key={g.id} gap={g} />
-                  ))}
-                </Box>
+                <CandidateContactDetails contact={contactFromCandidate(lastImport.candidate)} />
+                <MatchBulletList candidate={lastImport.candidate} />
                 <Box className="mt-4 flex flex-wrap gap-2">
                   <Link to={`/candidates/${lastImport.candidate.id}`} className="btn-secondary text-sm">
                     View profile

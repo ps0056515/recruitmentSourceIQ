@@ -1,16 +1,20 @@
 import { Router } from "express";
 import { DEMO_INBOX } from "../data/demoDataset.js";
+import { isDemoMode } from "../lib/config.js";
 import { ingestReply, listInbox } from "../services/replyInboxService.js";
 
 export const inboxRouter = Router();
 
 inboxRouter.get("/", async (req, res) => {
   const jobId = req.query.jobId ? String(req.query.jobId) : undefined;
-  let items = await listInbox(jobId).catch(() => []);
-  if (!items.length) {
-    items = jobId ? DEMO_INBOX.filter((i) => i.jobId === jobId) : [...DEMO_INBOX];
+  try {
+    const items = await listInbox(jobId);
+    return res.json({ items });
+  } catch {
+    if (!isDemoMode()) return res.status(503).json({ error: "inbox_unavailable" });
+    const items = jobId ? DEMO_INBOX.filter((i) => i.jobId === jobId) : [...DEMO_INBOX];
+    return res.json({ items });
   }
-  res.json({ items });
 });
 
 inboxRouter.post("/", async (req, res) => {

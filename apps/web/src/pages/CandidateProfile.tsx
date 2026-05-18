@@ -5,6 +5,8 @@ import { Box } from "../components/Box";
 import { GapInline } from "../components/GapInline";
 import { MatchBadge } from "../components/MatchBadge";
 import { SourceDot } from "../components/SourceDot";
+import { CandidateContactDetails } from "../components/CandidateContactDetails";
+import { contactFromCandidate } from "../lib/candidateContact";
 import { PageHeader } from "../components/ui/PageHeader";
 import api from "../lib/api";
 
@@ -67,8 +69,9 @@ export function CandidateProfile() {
           <Box className="mt-4 text-center">
             <SourceDot source={candidate.source} label />
             <p className="mt-2 text-xs capitalize text-ink-muted">Stage: {candidate.stage}</p>
-            <p className="text-xs text-ink-muted">Contact: {candidate.contactStatus}</p>
+            <p className="text-xs text-ink-muted">Outreach: {candidate.contactStatus.replace("_", " ")}</p>
           </Box>
+          <CandidateContactDetails contact={contactFromCandidate(candidate)} className="mt-4 text-left" />
         </Box>
 
         <Box className="space-y-5 lg:col-span-2">

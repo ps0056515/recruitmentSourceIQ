@@ -1,4 +1,5 @@
 import type { ProfileSource, RawCandidateProfile } from "@sourceiq/shared";
+import { PROMPTS } from "../config/prompts.js";
 import { claudeJson } from "../lib/llm.js";
 
 function normalize(text: string) {
@@ -18,6 +19,32 @@ function firstMeaningfulLine(text: string): string {
 
 function extractEmail(text: string): string | undefined {
   return text.match(/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/)?.[0];
+}
+
+function extractPhone(text: string): string | undefined {
+  const lines = text.split("\n").slice(0, 25);
+  for (const line of lines) {
+    const compact = line.replace(/[^\d+]/g, "");
+    if (compact.length >= 10 && compact.length <= 15) {
+      const m = line.match(/(?:\+?\d[\d\s().-]{8,}\d)/);
+      if (m) return m[0].trim();
+    }
+  }
+  const m = text.match(/(?:\+?\d{1,3}[-.\s]?)?\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4}\b/);
+  return m?.[0]?.trim();
+}
+
+function extractUrl(text: string, host: string): string | undefined {
+  const re = new RegExp(`https?:\\/\\/(?:www\\.)?${host.replace(".", "\\.")}[^\\s)>\\]]+`, "i");
+  return text.match(re)?.[0]?.replace(/[.,;]+$/, "");
+}
+
+function pickProfileUrl(links: {
+  linkedin?: string;
+  github?: string;
+  portfolio?: string;
+}): string | undefined {
+  return links.linkedin ?? links.github ?? links.portfolio;
 }
 
 function extractSkills(text: string): string[] {
@@ -49,18 +76,34 @@ export async function parseResumeFromText(
   const claude = await claudeJson<{
     name: string;
     headline: string;
-    email?: string;
-    location?: string;
+    email?: string | null;
+    phone?: string | null;
+    location?: string | null;
+    linkedin?: string | null;
+    github?: string | null;
+    portfolio?: string | null;
     skills: string[];
     companies: string[];
-    yearsExperience?: number;
-  }>(
-    "Extract resume fields as JSON: name, headline, email, location, skills[], companies[], yearsExperience. Use only what is in the text.",
-    clipped,
-  );
+    yearsExperience?: number | { total?: number | null };
+  }>(PROMPTS.resumeParse.system, clipped);
 
   const name = options?.candidateName?.trim() || claude?.name || firstMeaningfulLine(text);
   const email = claude?.email ?? extractEmail(text);
+  const phone = claude?.phone ?? extractPhone(text);
+  const linkedInUrl =
+    claude?.linkedin ??
+    text.match(/https?:\/\/(?:www\.)?linkedin\.com\/in\/[\w%-]+/i)?.[0]?.replace(/[.,;]+$/, "");
+  const githubUrl = claude?.github ?? extractUrl(text, "github.com");
+  const portfolioUrl = claude?.portfolio ?? undefined;
+  const profileUrl = pickProfileUrl({
+    linkedin: linkedInUrl,
+    github: githubUrl,
+    portfolio: portfolioUrl,
+  });
+  const years =
+    typeof claude?.yearsExperience === "number"
+      ? claude.yearsExperience
+      : claude?.yearsExperience?.total ?? undefined;
   const skills = claude?.skills?.length ? claude.skills : extractSkills(text);
   const companies = claude?.companies?.length ? claude.companies : extractCompanies(text);
   const site = options?.sourceSite ?? "manual_paste";
@@ -70,16 +113,21 @@ export async function parseResumeFromText(
     source: "manual_paste",
     name,
     headline: claude?.headline ?? `${skills[0] ?? "Professional"} · pasted from ${siteLabel}`,
-    email,
-    location: claude?.location,
+    email: email ?? undefined,
+    phone: phone ?? undefined,
+    location: claude?.location ?? undefined,
+    profileUrl,
     skills: skills.length ? skills : ["General experience"],
     companies: companies.length ? companies : [],
-    yearsExperience: claude?.yearsExperience,
+    yearsExperience: years,
     raw: {
       importedFrom: site,
       pastedAt: new Date().toISOString(),
       resumeText: clipped,
       excerpt: clipped.slice(0, 500),
+      linkedInUrl,
+      githubUrl,
+      portfolioUrl,
     },
   };
 }

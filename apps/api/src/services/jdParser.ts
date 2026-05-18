@@ -1,5 +1,7 @@
 import type { ParsedJD } from "@sourceiq/shared";
+import { PROMPTS } from "../config/prompts.js";
 import { claudeJson } from "../lib/llm.js";
+import { normalizeParsedJd } from "./normalizeParsedJd.js";
 
 function normalize(text: string): string {
   return text.replace(/\r\n/g, "\n").trim();
@@ -46,11 +48,13 @@ function sliceSection(text: string, labels: string[]): string {
 }
 
 export async function parseJdFromText(raw: string): Promise<ParsedJD> {
-  const claude = await claudeJson<ParsedJD>(
-    "Extract job description fields as JSON: title, company, location, summary, mustHaves[], niceToHaves[], skills[], yearsExperience, rawExcerpt.",
-    raw.slice(0, 8000),
-  );
-  if (claude?.title) return { ...claude, rawExcerpt: claude.rawExcerpt ?? raw.slice(0, 1200) };
+  const claude = await claudeJson<Record<string, unknown>>(PROMPTS.jdParse.system, raw.slice(0, 8000));
+  if (claude?.title) {
+    return normalizeParsedJd({
+      ...claude,
+      rawExcerpt: claude.rawExcerpt ?? raw.slice(0, 1200),
+    });
+  }
 
   const text = normalize(raw);
   const excerpt = text.length > 1200 ? `${text.slice(0, 1200)}…` : text;

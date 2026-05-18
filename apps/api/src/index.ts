@@ -11,6 +11,7 @@ import { jobs, candidates as memCandidates } from "./store.js";
 import { jobToApi } from "./routes/jobHelpers.js";
 import { prismaCandidateToApi } from "./services/candidateMapper.js";
 import { loadDemoIntoMemory } from "./data/demoDataset.js";
+import { isDemoMode, requireDatabase } from "./lib/config.js";
 
 async function warmMemoryCache() {
   try {
@@ -24,15 +25,24 @@ async function warmMemoryCache() {
 
     if (jobRows.length) {
       console.log(`  Loaded ${jobRows.length} jobs, ${candRows.length} candidates from Postgres`);
-      return;
+      return true;
     }
-  } catch {
-    /* fall through to demo */
+  } catch (e) {
+    if (requireDatabase()) throw e;
+    console.warn("  Postgres unavailable:", e instanceof Error ? e.message : e);
   }
-  if (loadDemoIntoMemory(jobs, memCandidates)) {
-    console.log("  Loaded demo dataset (8 candidates, 2 jobs, inbox, analytics)");
-    console.log("  Tip: npm run infra:up && npm run db:push && npm run db:seed for persistent Postgres");
+
+  if (isDemoMode() && loadDemoIntoMemory(jobs, memCandidates)) {
+    console.log("  DEMO_MODE: loaded demo dataset into memory");
+    return true;
   }
+
+  if (requireDatabase()) {
+    throw new Error("Database required but empty. Run: npm run infra:up && npm run db:push && npm run db:seed");
+  }
+
+  console.log("  No jobs in database. Create a job via the UI or run db:seed.");
+  return false;
 }
 
 const app = createApp();
@@ -52,8 +62,12 @@ async function boot() {
   const port = Number(process.env.PORT ?? 4001);
   server.listen(port, () => {
     console.log(`sourceIQ API + WS on http://localhost:${port}`);
+    console.log(`  Mode: ${isDemoMode() ? "demo" : "production"}`);
     console.log(`  Kafka: ${process.env.USE_KAFKA === "true" ? "on" : "in-memory bus"}`);
     console.log(`  Claude: ${process.env.ANTHROPIC_API_KEY ? "on" : "heuristics"}`);
+    console.log(`  Email: ${process.env.SMTP_HOST ? "SMTP" : "not configured"}`);
+    console.log(`  Tavily: ${process.env.TAVILY_API_KEY ? "on" : "off"}`);
+    console.log(`  Proxycurl: ${process.env.PROXYCURL_API_KEY ? "on" : "off"}`);
   });
 }
 

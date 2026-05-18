@@ -1,5 +1,6 @@
 import cors from "cors";
 import express from "express";
+import { requireAuth } from "./middleware/requireAuth.js";
 import { authRouter } from "./routes/auth.js";
 import { jdRouter } from "./routes/jd.js";
 import { jobsRouter } from "./routes/jobs.js";
@@ -20,8 +21,11 @@ export function createApp() {
       ok: true,
       kafka: process.env.USE_KAFKA === "true",
       clickhouse: process.env.USE_CLICKHOUSE === "true",
+      demoMode: process.env.DEMO_MODE === "true",
     }),
   );
+
+  app.use(requireAuth);
 
   app.use("/api/v1/auth", authRouter);
   app.use("/api/v1/jd", jdRouter);

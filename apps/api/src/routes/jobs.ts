@@ -5,15 +5,15 @@ import { PRD_SOURCES } from "@sourceiq/shared";
 import { jobs, candidates } from "../store.js";
 import { prisma } from "../lib/prisma.js";
 import { startSearch } from "../services/searchOrchestrator.js";
-import { runMockSearch } from "../services/mockSearch.js";
+import { isDemoMode } from "../lib/config.js";
+import { DEFAULT_WORKSPACE } from "../lib/config.js";
 import { importManualResume } from "../services/manualImportService.js";
 import { jobToApi } from "./jobHelpers.js";
+import { normalizeParsedJd } from "../services/normalizeParsedJd.js";
 import { prismaCandidateToApi } from "../services/candidateMapper.js";
 import { dedupeCandidatesByName } from "../services/candidateList.js";
 
 export const jobsRouter = Router();
-
-const DEFAULT_WORKSPACE = "default-workspace";
 
 async function ensureWorkspace() {
   await prisma.workspace.upsert({
@@ -70,11 +70,14 @@ jobsRouter.post("/", async (req, res) => {
 });
 
 jobsRouter.patch("/:id", async (req, res) => {
+  const parsedJd = req.body?.parsedJd
+    ? normalizeParsedJd(req.body.parsedJd as Record<string, unknown>)
+    : undefined;
   try {
     const row = await prisma.job.update({
       where: { id: req.params.id },
       data: {
-        ...(req.body?.parsedJd ? { parsedJd: req.body.parsedJd } : {}),
+        ...(parsedJd ? { parsedJd } : {}),
         ...(req.body?.title ? { title: String(req.body.title) } : {}),
         ...(req.body?.company ? { company: String(req.body.company) } : {}),
         ...(req.body?.searchConfig ? { searchConfig: req.body.searchConfig } : {}),
@@ -88,7 +91,7 @@ jobsRouter.patch("/:id", async (req, res) => {
     if (!job) return res.status(404).json({ error: "job_not_found" });
     const next = {
       ...job,
-      ...(req.body?.parsedJd ? { parsedJd: req.body.parsedJd as ParsedJD } : {}),
+      ...(parsedJd ? { parsedJd } : {}),
       updatedAt: new Date().toISOString(),
     };
     jobs.set(job.id, next);
@@ -137,12 +140,17 @@ jobsRouter.post("/:id/search", async (req, res) => {
     res.status(202).json({ started: true, jobId: job.id });
     void startSearch(job.id, sources, config).catch((e) => console.error("[search]", e));
     return;
-  } catch {
-    const job = jobs.get(req.params.id);
-    if (!job) return res.status(404).json({ error: "job_not_found" });
-    res.status(202).json({ started: true, jobId: job.id });
-    void runMockSearch(job, sources).catch(console.error);
-    return;
+  } catch (e) {
+    console.error("[search]", e);
+    if (isDemoMode()) {
+      const job = jobs.get(req.params.id);
+      if (!job) return res.status(404).json({ error: "job_not_found" });
+      const { runMockSearch } = await import("../services/mockSearch.js");
+      res.status(202).json({ started: true, jobId: job.id });
+      void runMockSearch(job, sources).catch(console.error);
+      return;
+    }
+    return res.status(503).json({ error: "search_unavailable", message: "Database required for discovery." });
   }
 });
 

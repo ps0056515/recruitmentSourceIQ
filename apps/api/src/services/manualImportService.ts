@@ -1,10 +1,13 @@
 import type { Candidate, Job, ManualImportResult, ParsedJD, ProfileSource } from "@sourceiq/shared";
 import { jobs, candidates as memCandidates } from "../store.js";
 import { prisma } from "../lib/prisma.js";
+import { resolveMustRequirements } from "../config/requirementMatching.js";
 import { parseResumeFromText } from "./resumeParser.js";
 import { rankProfiles } from "./rankingService.js";
 import { persistRankedCandidates } from "./candidatePersistence.js";
 import { trackEvent } from "./analyticsService.js";
+import { prismaCandidateToApi } from "./candidateMapper.js";
+import { contactFromRawProfile, mergeContact } from "./candidateContact.js";
 
 async function getJob(jobId: string): Promise<(Job & { workspaceId?: string }) | null> {
   try {
@@ -27,14 +30,18 @@ async function getJob(jobId: string): Promise<(Job & { workspaceId?: string }) |
 }
 
 function fallbackJd(job: Job): ParsedJD {
-  return {
+  const base: ParsedJD = {
     title: job.title,
     company: job.company,
     summary: `Requirements for ${job.title} at ${job.company}`,
-    mustHaves: job.parsedJd?.mustHaves?.length ? job.parsedJd.mustHaves : ["Relevant experience", "Core skills for role"],
+    mustHaves: job.parsedJd?.mustHaves ?? [],
     niceToHaves: job.parsedJd?.niceToHaves ?? [],
     skills: job.parsedJd?.skills ?? [],
     rawExcerpt: job.parsedJd?.rawExcerpt ?? job.title,
+  };
+  return {
+    ...base,
+    mustHaves: resolveMustRequirements(base),
   };
 }
 
@@ -51,7 +58,9 @@ export async function importManualResume(
   const job = await getJob(jobId);
   if (!job) throw new Error("job_not_found");
 
-  const parsedJd = job.parsedJd?.title ? job.parsedJd : fallbackJd(job);
+  const parsedJd = job.parsedJd?.title
+    ? { ...job.parsedJd, mustHaves: resolveMustRequirements(job.parsedJd) }
+    : fallbackJd(job);
   const profile = await parseResumeFromText(trimmed, options);
   const [ranked] = await rankProfiles(parsedJd, [profile]);
   if (!ranked) throw new Error("ranking_failed");
@@ -66,23 +75,7 @@ export async function importManualResume(
       include: { sources: true },
     });
     if (row) {
-      candidate = {
-        id: row.id,
-        jobId: row.jobId,
-        name: row.name,
-        headline: row.headline,
-        source: "manual_paste",
-        sources: row.sources.map((s) => s.source) as ProfileSource[],
-        matchScore: Math.round(row.matchScore),
-        gaps: row.gaps as unknown as Candidate["gaps"],
-        strengths: row.strengths as unknown as string[],
-        stage: row.stage as Candidate["stage"],
-        contactStatus: row.contactStatus as Candidate["contactStatus"],
-        aiSummary: row.aiSummary ?? undefined,
-        email: row.email ?? undefined,
-        percentile: row.percentile ?? undefined,
-        scoreBreakdown: row.scoreBreakdown as Record<string, number> | undefined,
-      };
+      candidate = prismaCandidateToApi(row);
     }
   } catch {
     // memory fallback below
@@ -108,14 +101,24 @@ export async function importManualResume(
     }).catch(() => undefined);
   }
 
+  const parsedContact = contactFromRawProfile(ranked.profile);
+  const contact = mergeContact(parsedContact, {
+    email: candidate.email,
+    phone: candidate.phone,
+    location: candidate.location,
+    linkedInUrl: candidate.linkedInUrl,
+    githubUrl: candidate.githubUrl,
+    portfolioUrl: candidate.portfolioUrl,
+  });
+
   return {
-    candidate,
+    candidate: { ...candidate, ...contact },
     parsedProfile: {
       name: ranked.profile.name,
       headline: ranked.profile.headline,
-      email: ranked.profile.email,
       skills: ranked.profile.skills,
       companies: ranked.profile.companies,
+      ...contact,
     },
   };
 }
