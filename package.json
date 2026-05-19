@@ -29,6 +29,7 @@
                 },
     "devDependencies":  {
                             "concurrently":  "^9.1.2",
-                            "@playwright/test":  "^1.50.1"
+                            "@playwright/test":  "^1.50.1",
+                            "cross-env":  "^7.0.3"
                         }
 }
