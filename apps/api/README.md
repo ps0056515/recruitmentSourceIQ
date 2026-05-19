@@ -21,7 +21,7 @@ Edit at minimum:
 
 ```env
 DATABASE_URL=postgresql://sourceiq:sourceiq@localhost:5432/sourceiq
-PORT=4001
+PORT=3333
 JWT_SECRET=change-me
 ANTHROPIC_API_KEY=
 USE_KAFKA=false
@@ -55,7 +55,7 @@ npm run dev:api
 npm run dev
 ```
 
-API: **http://localhost:4001**  
+API: **http://localhost:3333**  
 Health: `GET /health`
 
 ## Scripts

@@ -59,7 +59,7 @@ async function boot() {
   await initClickHouse();
   await startWorkers();
 
-  const port = Number(process.env.PORT ?? 4001);
+  const port = Number(process.env.PORT ?? 3333);
   server.listen(port, () => {
     console.log(`sourceIQ API + WS on http://localhost:${port}`);
     console.log(`  Mode: ${isDemoMode() ? "demo" : "production"}`);
