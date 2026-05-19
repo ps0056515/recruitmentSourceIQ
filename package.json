@@ -7,12 +7,18 @@
                        "apps/*"
                    ],
     "scripts":  {
+                    "setup":  "npm install && node scripts/setup-env.mjs && npm run db:generate -w @sourceiq/api && npm run db:push",
+                    "setup:env":  "node scripts/setup-env.mjs",
+                    "setup:full":  "npm run setup && npm run infra:up && npm run db:seed",
+                    "install:win":  "powershell -ExecutionPolicy Bypass -File scripts/install.ps1",
+                    "install:unix":  "bash scripts/install.sh",
                     "dev":  "concurrently -n api,web -c blue,green \"npm run dev -w @sourceiq/api\" \"npm run dev -w @sourceiq/web\"",
                     "dev:api":  "npm run dev -w @sourceiq/api",
                     "dev:web":  "npm run dev -w @sourceiq/web",
                     "build":  "npm run build -w @sourceiq/shared \u0026\u0026 npm run build -w @sourceiq/api \u0026\u0026 npm run build -w @sourceiq/web",
                     "infra:up":  "docker compose up -d",
                     "infra:down":  "docker compose down",
+                    "db:generate":  "npm run db:generate -w @sourceiq/api",
                     "db:push":  "npm run db:push -w @sourceiq/api",
                     "db:seed":  "npm run db:seed -w @sourceiq/api",
                     "fix:encoding":  "node tools/fix-encoding.js",
