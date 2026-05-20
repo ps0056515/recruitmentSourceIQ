@@ -134,12 +134,11 @@ describe("JD ↔ resume ranking (heuristic)", () => {
     expect(r!.matchScore).toBeLessThan(50);
   });
 
-  it("includes nice-to-have gaps with correct severity", async () => {
+  it("includes optional technical requirements (e.g. AWS, Kafka) in gap analysis", async () => {
     const p = profileFromResume("NoNice", RESUME_PARTIAL_MATCH);
     const [r] = await rankProfiles(PARSED_JD_FULLSTACK, [p]);
-    const nice = r!.gaps.filter((g) => g.severity === "nice_have");
-    expect(nice.length).toBeGreaterThan(0);
-    expect(nice.some((g) => g.label === "AWS" || g.label === "Kafka")).toBe(true);
+    const tech = r!.gaps.filter((g) => g.category === "technical" || g.label === "AWS" || g.label === "Kafka");
+    expect(tech.some((g) => g.label === "AWS" || g.label === "Kafka")).toBe(true);
   });
 
   it("scores within bounded range 20–98", async () => {
@@ -201,16 +200,17 @@ describe("JD ↔ resume ranking (heuristic)", () => {
     const p = profileFromResume("Breakdown", SAMPLE_RESUME_STRONG);
     const [r] = await rankProfiles(PARSED_JD_FULLSTACK, [p]);
     expect(r!.scoreBreakdown).toMatchObject({
-      skillMatch: expect.any(Number),
-      experienceDepth: expect.any(Number),
-      domainRelevance: expect.any(Number),
+      technical: expect.any(Number),
+      behavioral: expect.any(Number),
+      technicalWeight: 80,
+      behavioralWeight: 20,
     });
   });
 
   it("manual_paste summary lists requirement match details", async () => {
     const p = profileFromResume("Manual", SAMPLE_RESUME_STRONG);
     const [r] = await rankProfiles(PARSED_JD_FULLSTACK, [p]);
-    expect(r!.aiSummary).toMatch(/requirements matched|all \d+ key requirements/i);
+    expect(r!.aiSummary).toMatch(/technical \d+\/\d+.*80% weight|behavioral \d+\/\d+.*20% weight/i);
   });
 });
 

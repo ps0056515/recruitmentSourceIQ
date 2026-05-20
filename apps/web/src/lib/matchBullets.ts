@@ -1,6 +1,12 @@
-import type { Candidate, GapItem } from "@sourceiq/shared";
+import type { Candidate, GapItem, RequirementCategory } from "@sourceiq/shared";
 
-export type MatchBullet = { key: string; label: string; matched: boolean; detail?: string };
+export type MatchBullet = {
+  key: string;
+  label: string;
+  matched: boolean;
+  detail?: string;
+  category?: RequirementCategory;
+};
 
 function dedupeBullets(items: MatchBullet[]): MatchBullet[] {
   const seen = new Set<string>();
@@ -27,6 +33,7 @@ function gapBullet(g: GapItem): MatchBullet {
     label: g.label,
     matched: g.matched,
     detail: g.detail,
+    category: gapCat(g),
   };
 }
 
@@ -63,16 +70,31 @@ export function matchBulletsForCandidate(
   return sorted.slice(0, 14);
 }
 
+function gapCat(g: GapItem): RequirementCategory {
+  return g.category ?? (/communication|ownership|impact|collaborat|leadership|ambiguity/i.test(g.label)
+    ? "behavioral"
+    : "technical");
+}
+
 export function matchBulletCounts(candidate: Pick<Candidate, "gaps">): {
   matched: number;
   total: number;
+  technicalMatched: number;
+  technicalTotal: number;
+  behavioralMatched: number;
+  behavioralTotal: number;
 } {
   const gaps = candidate.gaps ?? [];
-  if (!gaps.length) return { matched: 0, total: 0 };
-  const must = gaps.filter((g) => g.severity !== "nice_have");
-  const pool = must.length ? must : gaps;
+  const tech = gaps.filter((g) => gapCat(g) === "technical");
+  const beh = gaps.filter((g) => gapCat(g) === "behavioral");
+  const technicalMatched = tech.filter((g) => g.matched).length;
+  const behavioralMatched = beh.filter((g) => g.matched).length;
   return {
-    matched: pool.filter((g) => g.matched).length,
-    total: pool.length,
+    matched: gaps.filter((g) => g.matched).length,
+    total: gaps.length,
+    technicalMatched,
+    technicalTotal: tech.length,
+    behavioralMatched,
+    behavioralTotal: beh.length,
   };
 }

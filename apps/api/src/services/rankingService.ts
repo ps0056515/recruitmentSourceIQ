@@ -8,8 +8,10 @@ import {
 } from "../config/prompts.js";
 import {
   buildManualMatchSummary,
+  classifyRequirement,
+  computeMatchScoreFromGaps,
   requirementMatched,
-  resolveMustRequirements,
+  resolveScoringRequirements,
 } from "../config/requirementMatching.js";
 
 export interface RankedProfile {
@@ -43,11 +45,18 @@ function normalizeGapSeverity(severity: unknown): GapItem["severity"] {
 }
 
 function normalizeGapItem(g: GapItem): GapItem {
+  const label = String(g.label ?? "").trim();
+  const rawCat = (g as GapItem & { category?: string }).category;
+  const category =
+    rawCat === "technical" || rawCat === "behavioral"
+      ? rawCat
+      : classifyRequirement(label);
   return {
     id: g.id || randomUUID(),
-    label: String(g.label ?? "").trim(),
+    label,
     matched: Boolean(g.matched),
     severity: normalizeGapSeverity(g.severity),
+    category,
     detail: g.detail ? String(g.detail).trim() : undefined,
   };
 }
@@ -70,6 +79,7 @@ function mergeGaps(base: GapItem[], fromClaude: GapItem[]): GapItem[] {
           matched: c.matched,
           detail: c.detail ?? g.detail,
           severity: c.severity !== "info" ? c.severity : g.severity,
+          category: c.category ?? g.category ?? classifyRequirement(g.label),
         }
       : g;
   });
@@ -96,58 +106,60 @@ function dedupeLabels(labels: string[]): string[] {
   return out;
 }
 
+function buildRequirementGaps(
+  labels: string[],
+  blob: string,
+  severity: GapItem["severity"],
+): GapItem[] {
+  return labels.map((label) => {
+    const matched = requirementMatched(label, blob);
+    const category = classifyRequirement(label);
+    return {
+      id: randomUUID(),
+      label,
+      severity,
+      category,
+      matched,
+      detail: matched
+        ? category === "technical"
+          ? "Found in resume/profile text"
+          : "Demonstrated in resume or profile"
+        : category === "technical"
+          ? "Not found in pasted content"
+          : "Limited evidence in pasted content",
+    };
+  });
+}
+
+function applyScoreFromGaps(rank: RankedProfile): RankedProfile {
+  const normalized = rank.gaps.map(normalizeGapItem);
+  const { score, scoreBreakdown } = computeMatchScoreFromGaps(normalized);
+  return { ...rank, gaps: normalized, matchScore: score, scoreBreakdown };
+}
+
 function heuristicRank(parsedJd: ParsedJD, profile: RawCandidateProfile): RankedProfile {
   const blob = profileEvidenceBlob(profile);
-  const must = resolveMustRequirements(parsedJd);
-  const nice = parsedJd.niceToHaves.slice(0, 5);
+  const { technical, behavioral } = resolveScoringRequirements(parsedJd);
 
-  const mustGaps: GapItem[] = must.map((label) => {
-    const matched = requirementMatched(label, blob);
-    return {
-      id: randomUUID(),
-      label,
-      severity: "must_have" as const,
-      matched,
-      detail: matched ? "Found in resume/profile text" : "Not found in pasted content",
-    };
-  });
+  const gaps = [
+    ...buildRequirementGaps(technical, blob, "must_have"),
+    ...buildRequirementGaps(behavioral, blob, "nice_have"),
+  ];
 
-  const niceGaps: GapItem[] = nice.map((label) => {
-    const matched = requirementMatched(label, blob);
-    return {
-      id: randomUUID(),
-      label,
-      severity: "nice_have" as const,
-      matched,
-      detail: matched ? "Mentioned in resume" : "Not mentioned",
-    };
-  });
-
-  const gaps = [...mustGaps, ...niceGaps];
-  const mustMatched = mustGaps.filter((g) => g.matched).length;
-  const niceMatched = niceGaps.filter((g) => g.matched).length;
-  const mustPct = mustGaps.length ? mustMatched / mustGaps.length : 0.5;
-  const nicePct = niceGaps.length ? niceMatched / niceGaps.length : 0.5;
-  const score = Math.round(mustPct * 70 + nicePct * 30);
+  const { score, scoreBreakdown } = computeMatchScoreFromGaps(gaps);
 
   const isManual = profile.source === "manual_paste";
   const summary = isManual
-    ? buildManualMatchSummary(profile.name, score, parsedJd.title, mustGaps)
+    ? buildManualMatchSummary(profile.name, score, parsedJd.title, gaps)
     : `${profile.name} aligns with ${parsedJd.title} based on ${profile.skills.slice(0, 4).join(", ")}.`;
 
   return {
     profile,
-    matchScore: Math.min(98, Math.max(20, score)),
+    matchScore: score,
     gaps,
     strengths: profile.skills.slice(0, 3).map((s) => `Evidence: ${s}`),
     aiSummary: summary,
-    scoreBreakdown: {
-      skillMatch: Math.round(score * 0.4),
-      experienceDepth: Math.round(score * 0.25),
-      domainRelevance: Math.round(score * 0.2),
-      profileSignals: Math.round(score * 0.1),
-      activityRecency: Math.round(score * 0.05),
-    },
+    scoreBreakdown,
   };
 }
 
@@ -175,13 +187,12 @@ export async function rankProfiles(
     ranked = profiles.map((profile, i) => {
       const c = claudeResults.find((r) => r.name === profile.name) ?? claudeResults[i];
       const base = heuristicRank(parsedJd, profile);
-      return {
+      return applyScoreFromGaps({
         ...base,
-        matchScore: c?.matchScore ?? base.matchScore,
         gaps: mergeGaps(base.gaps, c?.gaps ?? []),
         strengths: mergeStrengths(base.strengths, c?.strengths ?? []),
         aiSummary: c?.summary ?? base.aiSummary,
-      };
+      });
     });
   } else {
     ranked = profiles.map((p) => heuristicRank(parsedJd, p));

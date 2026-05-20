@@ -83,12 +83,16 @@ export type ContactStatus =
 
 export type ReplyIntent = "interested" | "not_interested" | "more_info" | "ambiguous";
 
+export type RequirementCategory = "technical" | "behavioral";
+
 export interface GapItem {
   id: string;
   label: string;
   severity: "must_have" | "nice_have" | "info";
   matched: boolean;
   detail?: string;
+  /** Used for 80% technical / 20% behavioral score weighting. */
+  category?: RequirementCategory;
 }
 
 export interface ParsedJD {

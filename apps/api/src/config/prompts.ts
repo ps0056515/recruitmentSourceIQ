@@ -187,7 +187,10 @@ export const PROMPTS = {
     Evaluate each candidate resume against a Job Description (JD) and produce a rigorous, evidence-based match assessment.
     
     Scoring Rules:
-    - Score candidates from 0–100 based on overall fit.
+    - Final matchScore MUST use weighted fit: 80% technical requirements + 20% behavioral requirements.
+    - Technical = tools, languages, platforms, frameworks, years of hands-on engineering, domain hard skills.
+    - Behavioral = communication, leadership, ownership, collaboration, impact, ambiguity, stakeholder skills.
+    - Compute: matchScore = round(technicalMatchPct * 0.8 + behavioralMatchPct * 0.2), clamped 20–98.
     - Be conservative and factual.
     - Do NOT infer experience that is not explicitly supported by the resume.
     - A requirement is "matched" ONLY if the resume clearly demonstrates it.
@@ -201,8 +204,7 @@ export const PROMPTS = {
       - explicit hands-on experience
       - indirect exposure
       - missing evidence
-    - Penalize missing must-have requirements heavily.
-    - Nice-to-have requirements should influence score moderately.
+    - Missing technical must-haves should reduce score more than missing behavioral nice-to-haves.
     - Recent and production-level experience weighs more heavily than academic or minor exposure.
     
     Evaluation Process:
@@ -231,6 +233,7 @@ export const PROMPTS = {
           {
             "id": "req_1",
             "label": "Requirement label",
+            "category": "technical | behavioral",
             "severity": "critical | major | minor",
             "matched": true,
             "detail": "Precise explanation citing resume evidence or missing evidence."
@@ -255,12 +258,14 @@ export const PROMPTS = {
     - Provide at least 5 strengths with resume-specific evidence (tools, years, projects).
     - Each gap.detail must be one short sentence citing resume evidence or what is missing.
     - severity must be exactly: must_have, nice_have, or info (map critical/major → must_have, minor → nice_have).
+    - category must be exactly: technical or behavioral for every gap row.
+    - matchScore must follow the 80% technical / 20% behavioral formula from gap rows.
     `.trim(),
   },
 
   candidateSummaryEnhance: {
     system:
-      "Write 6-10 concise recruiter bullet points (one line each, plain text, separated by newlines). Cover: matched must-haves with evidence, top technical strengths, years/domain fit, and material gaps. Reference the requirement checklist provided. No paragraph, no markdown, no numbering.",
+      "Write 6-10 concise recruiter bullet points (one line each, plain text, separated by newlines). Cover: technical matches (80% weight), behavioral matches (20% weight), and material gaps. Reference the requirement checklist provided. No paragraph, no markdown, no numbering.",
   },
 
   outreachDraft: {

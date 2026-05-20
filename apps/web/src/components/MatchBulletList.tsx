@@ -15,16 +15,59 @@ export function MatchBulletList({
 
   const matched = bullets.filter((b) => b.matched);
   const gaps = bullets.filter((b) => !b.matched);
+  const techBullets = bullets.filter((b) => b.category !== "behavioral");
+  const behBullets = bullets.filter((b) => b.category === "behavioral");
+  const matchedTech = techBullets.filter((b) => b.matched);
+  const gapTech = techBullets.filter((b) => !b.matched);
+  const matchedBeh = behBullets.filter((b) => b.matched);
+  const gapBeh = behBullets.filter((b) => !b.matched);
+
+  const showSplit = counts.technicalTotal > 0 && counts.behavioralTotal > 0;
 
   return (
     <div className={className}>
       {counts.total > 0 ? (
         <p className="mb-2 text-xs font-medium text-ink-muted">
-          {counts.matched}/{counts.total} key requirements matched
+          Score: 80% technical + 20% behavioral
+          {showSplit ? (
+            <>
+              {" "}
+              · Technical {counts.technicalMatched}/{counts.technicalTotal} · Behavioral{" "}
+              {counts.behavioralMatched}/{counts.behavioralTotal}
+            </>
+          ) : (
+            <> · {counts.matched}/{counts.total} requirements matched</>
+          )}
         </p>
       ) : null}
 
-      {matched.length > 0 ? (
+      {showSplit && matchedTech.length > 0 ? (
+        <div className="mb-3">
+          <p className="text-[10px] font-semibold uppercase tracking-wide text-emerald">
+            Technical matched
+          </p>
+          <ul className="mt-1.5 space-y-2.5">
+            {matchedTech.map((b) => (
+              <BulletRow key={b.key} bullet={b} />
+            ))}
+          </ul>
+        </div>
+      ) : null}
+
+      {showSplit && matchedBeh.length > 0 ? (
+        <div className="mb-3">
+          <p className="text-[10px] font-semibold uppercase tracking-wide text-emerald">
+            Behavioral matched
+          </p>
+          <ul className="mt-1.5 space-y-2.5">
+            {matchedBeh.map((b) => (
+              <BulletRow key={b.key} bullet={b} />
+            ))}
+          </ul>
+        </div>
+      ) : null}
+
+      {!showSplit && matched.length > 0 ? (
         <div>
           <p className="text-[10px] font-semibold uppercase tracking-wide text-emerald">Matched</p>
           <ul className="mt-1.5 space-y-2.5">
@@ -35,7 +78,29 @@ export function MatchBulletList({
         </div>
       ) : null}
 
-      {gaps.length > 0 ? (
+      {showSplit && gapTech.length > 0 ? (
+        <div className="mt-3">
+          <p className="text-[10px] font-semibold uppercase tracking-wide text-coral">Technical gaps</p>
+          <ul className="mt-1.5 space-y-2.5">
+            {gapTech.map((b) => (
+              <BulletRow key={b.key} bullet={b} />
+            ))}
+          </ul>
+        </div>
+      ) : null}
+
+      {showSplit && gapBeh.length > 0 ? (
+        <div className="mt-3">
+          <p className="text-[10px] font-semibold uppercase tracking-wide text-coral">Behavioral gaps</p>
+          <ul className="mt-1.5 space-y-2.5">
+            {gapBeh.map((b) => (
+              <BulletRow key={b.key} bullet={b} />
+            ))}
+          </ul>
+        </div>
+      ) : null}
+
+      {!showSplit && gaps.length > 0 ? (
         <div className={matched.length ? "mt-4" : undefined}>
           <p className="text-[10px] font-semibold uppercase tracking-wide text-coral">Gaps</p>
           <ul className="mt-1.5 space-y-2.5">
