@@ -58,4 +58,4 @@ Write-Host ""
 Write-Host "Done. Next steps:" -ForegroundColor Green
 Write-Host "  1. Edit apps/api/.env (DATABASE_URL, JWT_SECRET, ANTHROPIC_API_KEY)"
 Write-Host "  2. npm run dev"
-Write-Host "  3. Open http://localhost:5173"
+Write-Host "  3. Open http://localhost:2222"

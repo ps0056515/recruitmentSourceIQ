@@ -1,6 +1,6 @@
 # @sourceiq/web
 
-Vite + React frontend for sourceIQ. Proxies `/api` and `/ws` to the API on port 4001.
+Vite + React frontend for sourceIQ. Proxies `/api` and `/ws` to the API on port 3333.
 
 ## Install
 
@@ -22,13 +22,13 @@ npm run dev
 npm run dev:web
 ```
 
-App: **http://localhost:5173**
+App: **http://localhost:2222**
 
 ## Scripts
 
 | Command | Description |
 |---------|-------------|
-| `npm run dev` | Vite dev server on port 5173 |
+| `npm run dev` | Vite dev server on port 2222 |
 | `npm run build` | Production build to `dist/` |
 | `npm run preview` | Preview production build |
 
@@ -36,8 +36,8 @@ App: **http://localhost:5173**
 
 `vite.config.ts` forwards:
 
-- `/api` → `http://localhost:4001`
-- `/ws` → `http://localhost:4001` (WebSocket)
+- `/api` → `http://localhost:3333`
+- `/ws` → `http://localhost:3333` (WebSocket)
 
 Start the API before using discovery, auth, or imports.
 

@@ -1,4 +1,13 @@
-import "dotenv/config";
+import dotenv from "dotenv";
+import path from "path";
+import { fileURLToPath } from "url";
+
+const apiRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+dotenv.config({ path: path.join(apiRoot, ".env") });
+dotenv.config({ path: path.join(apiRoot, "../../.env") });
+
+/** Default API port (override with PORT in apps/api/.env). */
+const DEFAULT_API_PORT = 3333;
 import http from "http";
 import { WebSocketServer } from "ws";
 import { createApp } from "./app.js";
@@ -59,7 +68,7 @@ async function boot() {
   await initClickHouse();
   await startWorkers();
 
-  const port = Number(process.env.PORT ?? 4001);
+  const port = Number(process.env.PORT ?? DEFAULT_API_PORT);
   server.listen(port, () => {
     console.log(`sourceIQ API + WS on http://localhost:${port}`);
     console.log(`  Mode: ${isDemoMode() ? "demo" : "production"}`);

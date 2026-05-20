@@ -228,7 +228,7 @@ w("apps/api/src/index.ts", """import { createServer } from 'http';
 import { WebSocketServer } from 'ws';
 import { createApp } from './app.js';
 import { attachSearchProgress } from './ws/searchProgress.js';
-const PORT = Number(process.env.PORT ?? 4001);
+const PORT = Number(process.env.PORT ?? 3333);
 const app = createApp();
 const server = createServer(app);
 const wss = new WebSocketServer({ server, path: '/ws' });
@@ -291,7 +291,7 @@ w("apps/web/vite.config.ts", """import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 export default defineConfig({
   plugins: [react()],
-  server: { port: 5174, proxy: { '/api': 'http://localhost:4001', '/ws': { target: 'ws://localhost:4001', ws: true } } },
+  server: { port: 2222, proxy: { '/api': 'http://localhost:3333', '/ws': { target: 'ws://localhost:3333', ws: true } } },
 });
 """)
 

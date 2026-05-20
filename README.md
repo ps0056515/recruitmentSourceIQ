@@ -52,7 +52,7 @@ npm run dev
 | `npm run setup` | Install deps + env files + Prisma generate + `db:push` |
 | `npm run setup:full` | Above + Docker infra + seed |
 | `npm run setup:env` | Copy `.env.example` → `.env` and `apps/api/.env` |
-| `npm run dev` | API (`:4001`) + Web (`:5173`) |
+| `npm run dev` | API (`:3333`) + Web (`:2222`) |
 | `npm run dev:api` | API only |
 | `npm run dev:web` | Web only |
 | `npm run build` | Build shared, API, and web |
@@ -77,7 +77,7 @@ Use an existing Postgres instance (local or remote).
 
    ```env
    DATABASE_URL=postgresql://USER:PASSWORD@HOST:5432/DATABASE
-   PORT=4001
+   PORT=3333
    JWT_SECRET=your-long-random-secret
    ANTHROPIC_API_KEY=sk-ant-...
    USE_KAFKA=false
@@ -102,7 +102,7 @@ Use an existing Postgres instance (local or remote).
    npm run dev
    ```
 
-5. Open **http://localhost:5173** — register/login with any email + password (first login creates the user).
+5. Open **http://localhost:2222** — register/login with any email + password (first login creates the user).
 
 ## Run with Docker infrastructure
 
@@ -125,8 +125,8 @@ Services:
 | Redis | 6379 |
 | Kafka (Redpanda) | 19092 |
 | ClickHouse HTTP | 8123 |
-| API | 4001 |
-| Web (Vite) | 5173 |
+| API | 3333 |
+| Web (Vite) | 2222 |
 
 ## Environment variables
 
