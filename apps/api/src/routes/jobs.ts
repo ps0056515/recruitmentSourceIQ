@@ -7,7 +7,7 @@ import { prisma } from "../lib/prisma.js";
 import { startSearch } from "../services/searchOrchestrator.js";
 import { isDemoMode } from "../lib/config.js";
 import { DEFAULT_WORKSPACE } from "../lib/config.js";
-import { importManualResume } from "../services/manualImportService.js";
+import { importManualResume, importManualResumesBatch } from "../services/manualImportService.js";
 import { jobToApi } from "./jobHelpers.js";
 import { normalizeParsedJd } from "../services/normalizeParsedJd.js";
 import { prismaCandidateToApi } from "../services/candidateMapper.js";
@@ -172,6 +172,35 @@ jobsRouter.post("/:id/manual-import", async (req, res) => {
       return res.status(400).json({ error: msg, message: "Save a job brief first so we can compare the resume." });
     }
     console.error("[manual-import]", e);
+    return res.status(500).json({ error: "import_failed", message: String(e) });
+  }
+});
+
+jobsRouter.post("/:id/manual-import/batch", async (req, res) => {
+  const sourceSite = req.body?.sourceSite as ProfileSource | undefined;
+  const raw = Array.isArray(req.body?.resumes) ? req.body.resumes : [];
+  const resumes = raw
+    .map((r: { resumeText?: unknown; candidateName?: unknown }) => ({
+      resumeText: String(r?.resumeText ?? ""),
+      candidateName: r?.candidateName ? String(r.candidateName) : undefined,
+    }))
+    .filter((r: { resumeText: string }) => r.resumeText.trim().length > 0);
+
+  if (!resumes.length) {
+    return res.status(400).json({
+      error: "resumes_required",
+      message: "Send at least one resume. Separate multiple pastes with a line of ---.",
+    });
+  }
+  if (resumes.length > 20) {
+    return res.status(400).json({ error: "too_many_resumes", message: "Compare up to 20 resumes at a time." });
+  }
+
+  try {
+    const result = await importManualResumesBatch(req.params.id, resumes, { sourceSite });
+    return res.status(201).json(result);
+  } catch (e) {
+    console.error("[manual-import/batch]", e);
     return res.status(500).json({ error: "import_failed", message: String(e) });
   }
 });

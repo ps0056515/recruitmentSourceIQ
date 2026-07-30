@@ -39,6 +39,16 @@ export interface CandidateContact {
   portfolioUrl?: string;
 }
 
+/** How well a resume fits the JD after scoring. */
+export type MatchVerdict = "strong_match" | "partial_match" | "weak_match";
+
+/** Actionable gap for the candidate to close vs the JD. */
+export interface ResumeImprovement {
+  label: string;
+  severity: "must_have" | "nice_have" | "info";
+  suggestion: string;
+}
+
 export interface ManualImportResult {
   candidate: Candidate;
   parsedProfile: {
@@ -47,6 +57,13 @@ export interface ManualImportResult {
     skills: string[];
     companies: string[];
   } & CandidateContact;
+  verdict: MatchVerdict;
+  improvements: ResumeImprovement[];
+}
+
+export interface BatchManualImportResult {
+  results: ManualImportResult[];
+  errors: Array<{ index: number; error: string; message?: string }>;
 }
 
 export const PRD_SOURCES: ProfileSource[] = [

@@ -1,4 +1,14 @@
-import type { Candidate, Job, ManualImportResult, ParsedJD, ProfileSource } from "@sourceiq/shared";
+import type {
+  BatchManualImportResult,
+  Candidate,
+  GapItem,
+  Job,
+  ManualImportResult,
+  MatchVerdict,
+  ParsedJD,
+  ProfileSource,
+  ResumeImprovement,
+} from "@sourceiq/shared";
 import { jobs, candidates as memCandidates } from "../store.js";
 import { prisma } from "../lib/prisma.js";
 import { resolveMustRequirements } from "../config/requirementMatching.js";
@@ -8,6 +18,36 @@ import { persistRankedCandidates } from "./candidatePersistence.js";
 import { trackEvent } from "./analyticsService.js";
 import { prismaCandidateToApi } from "./candidateMapper.js";
 import { contactFromRawProfile, mergeContact } from "./candidateContact.js";
+
+export function matchVerdictForCandidate(candidate: Pick<Candidate, "matchScore" | "gaps">): MatchVerdict {
+  const gaps = candidate.gaps ?? [];
+  const unmatchedMust = gaps.filter((g) => g.severity === "must_have" && !g.matched);
+  if (candidate.matchScore >= 72 && unmatchedMust.length === 0) return "strong_match";
+  if (candidate.matchScore >= 55 || gaps.some((g) => g.matched)) return "partial_match";
+  return "weak_match";
+}
+
+export function improvementsFromGaps(gaps: GapItem[] | undefined): ResumeImprovement[] {
+  return (gaps ?? [])
+    .filter((g) => !g.matched && g.label?.trim())
+    .map((g) => ({
+      label: g.label.trim(),
+      severity: g.severity,
+      suggestion:
+        g.detail?.trim() ||
+        (g.severity === "must_have"
+          ? `Add concrete evidence of ${g.label} (role, project, tools, and years).`
+          : `If you have ${g.label} experience, call it out clearly near the top of the resume.`),
+    }));
+}
+
+function enrichResult(result: Omit<ManualImportResult, "verdict" | "improvements">): ManualImportResult {
+  return {
+    ...result,
+    verdict: matchVerdictForCandidate(result.candidate),
+    improvements: improvementsFromGaps(result.candidate.gaps),
+  };
+}
 
 async function getJob(jobId: string): Promise<(Job & { workspaceId?: string }) | null> {
   try {
@@ -111,7 +151,7 @@ export async function importManualResume(
     portfolioUrl: candidate.portfolioUrl,
   });
 
-  return {
+  return enrichResult({
     candidate: { ...candidate, ...contact },
     parsedProfile: {
       name: ranked.profile.name,
@@ -120,5 +160,39 @@ export async function importManualResume(
       companies: ranked.profile.companies,
       ...contact,
     },
-  };
+  });
+}
+
+export async function importManualResumesBatch(
+  jobId: string,
+  resumes: Array<{ resumeText: string; candidateName?: string }>,
+  options?: { sourceSite?: ProfileSource },
+): Promise<BatchManualImportResult> {
+  const results: ManualImportResult[] = [];
+  const errors: BatchManualImportResult["errors"] = [];
+
+  for (const [index, item] of resumes.entries()) {
+    try {
+      const result = await importManualResume(jobId, item.resumeText, {
+        candidateName: item.candidateName,
+        sourceSite: options?.sourceSite,
+      });
+      results.push(result);
+    } catch (e) {
+      const error = e instanceof Error ? e.message : "import_failed";
+      errors.push({
+        index,
+        error,
+        message:
+          error === "resume_too_short"
+            ? "Paste at least a few lines of resume text."
+            : error === "job_not_found"
+              ? "Job not found."
+              : String(e),
+      });
+    }
+  }
+
+  results.sort((a, b) => b.candidate.matchScore - a.candidate.matchScore);
+  return { results, errors };
 }
