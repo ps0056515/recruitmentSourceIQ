@@ -29,7 +29,7 @@ export function matchVerdictForCandidate(candidate: Pick<Candidate, "matchScore"
 
 export function improvementsFromGaps(gaps: GapItem[] | undefined): ResumeImprovement[] {
   return (gaps ?? [])
-    .filter((g) => !g.matched && g.label?.trim())
+    .filter((g) => !g.matched && g.severity !== "info" && g.label?.trim())
     .map((g) => ({
       label: g.label.trim(),
       severity: g.severity,

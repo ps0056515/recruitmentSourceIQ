@@ -10,6 +10,7 @@ import {
   buildManualMatchSummary,
   classifyRequirement,
   computeMatchScoreFromGaps,
+  isInterviewOnlyBehavioral,
   requirementMatched,
   resolveScoringRequirements,
 } from "../config/requirementMatching.js";
@@ -51,6 +52,19 @@ function normalizeGapItem(g: GapItem): GapItem {
     rawCat === "technical" || rawCat === "behavioral"
       ? rawCat
       : classifyRequirement(label);
+
+  // Soft traits absent from CVs must not show as red gaps / score hits
+  if (isInterviewOnlyBehavioral(label)) {
+    return {
+      id: g.id || randomUUID(),
+      label,
+      matched: true,
+      severity: "info",
+      category: "behavioral",
+      detail: "Interview signal — not expected to be proven from a CV alone",
+    };
+  }
+
   return {
     id: g.id || randomUUID(),
     label,
@@ -137,13 +151,25 @@ function applyScoreFromGaps(rank: RankedProfile): RankedProfile {
   return { ...rank, gaps: normalized, matchScore: score, scoreBreakdown };
 }
 
+function interviewOnlyGaps(labels: string[]): GapItem[] {
+  return labels.map((label) => ({
+    id: randomUUID(),
+    label,
+    severity: "info" as const,
+    category: "behavioral" as const,
+    matched: true,
+    detail: "Interview signal — not expected to be proven from a CV alone",
+  }));
+}
+
 function heuristicRank(parsedJd: ParsedJD, profile: RawCandidateProfile): RankedProfile {
   const blob = profileEvidenceBlob(profile);
-  const { technical, behavioral } = resolveScoringRequirements(parsedJd);
+  const { technical, behavioral, interviewOnly } = resolveScoringRequirements(parsedJd);
 
   const gaps = [
     ...buildRequirementGaps(technical, blob, "must_have"),
     ...buildRequirementGaps(behavioral, blob, "nice_have"),
+    ...interviewOnlyGaps(interviewOnly),
   ];
 
   const { score, scoreBreakdown } = computeMatchScoreFromGaps(gaps);

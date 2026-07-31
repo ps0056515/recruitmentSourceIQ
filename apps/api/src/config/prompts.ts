@@ -187,13 +187,14 @@ export const PROMPTS = {
     Evaluate each candidate resume against a Job Description (JD) and produce a rigorous, evidence-based match assessment.
     
     Scoring Rules:
-    - Final matchScore MUST use weighted fit: 80% technical requirements + 20% behavioral requirements.
-    - Technical = tools, languages, platforms, frameworks, years of hands-on engineering, domain hard skills.
-    - Behavioral = communication, leadership, ownership, collaboration, impact, ambiguity, stakeholder skills.
-    - Compute: matchScore = round(technicalMatchPct * 0.8 + behavioralMatchPct * 0.2), clamped 20–98.
-    - Be conservative and factual.
-    - Do NOT infer experience that is not explicitly supported by the resume.
-    - A requirement is "matched" ONLY if the resume clearly demonstrates it.
+    - Final matchScore is driven by TECHNICAL fit from the resume (tools, languages, platforms, frameworks, years, hard skills).
+    - Soft / interview-only traits (communication, ownership, clear impact, comfort with ambiguity, collaboration, culture fit) must NOT reduce matchScore when absent from the CV.
+    - For those soft traits: set severity to "info", matched to true, and detail "Assess in interview — not expected on CV".
+    - If the JD also has behavioral items that ARE evidenced on the resume, you may include them; otherwise prefer technical-only scoring.
+    - When scoring: matchScore ≈ technicalMatchPct * 100 (or 80/20 only if scorable behavioral evidence exists), clamped 20–98.
+    - Be conservative and factual for technical requirements.
+    - Do NOT infer technical experience that is not explicitly supported by the resume.
+    - A TECHNICAL requirement is "matched" ONLY if the resume clearly demonstrates it.
     - Use semantic equivalence and common industry synonyms:
       - "Node" = "Node.js"
       - "Postgres" = "PostgreSQL"

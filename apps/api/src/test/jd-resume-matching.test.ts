@@ -56,9 +56,12 @@ describe("JD parsing (heuristic, no Claude)", () => {
     expect(parsed.skills).toContain("Go");
   });
 
-  it("provides fallback must-haves when bullets missing", async () => {
+  it("does not invent soft must-haves when bullets and skills are missing", async () => {
     const parsed = await parseJdFromText("Hiring a designer\nNo bullet sections here.");
-    expect(parsed.mustHaves.length).toBeGreaterThan(0);
+    expect(parsed.mustHaves).not.toEqual(expect.arrayContaining(["Clear impact", "Relevant ownership"]));
+    expect(parsed.niceToHaves).not.toEqual(
+      expect.arrayContaining(["Strong communication", "Comfort with ambiguity"]),
+    );
     expect(parsed.rawExcerpt.length).toBeGreaterThan(0);
   });
 });
@@ -202,15 +205,17 @@ describe("JD ↔ resume ranking (heuristic)", () => {
     expect(r!.scoreBreakdown).toMatchObject({
       technical: expect.any(Number),
       behavioral: expect.any(Number),
-      technicalWeight: 80,
-      behavioralWeight: 20,
+      technicalWeight: expect.any(Number),
+      behavioralWeight: expect.any(Number),
     });
+    // Soft interview-only traits no longer consume the 20% behavioral weight
+    expect(r!.scoreBreakdown!.technicalWeight).toBeGreaterThanOrEqual(80);
   });
 
   it("manual_paste summary lists requirement match details", async () => {
     const p = profileFromResume("Manual", SAMPLE_RESUME_STRONG);
     const [r] = await rankProfiles(PARSED_JD_FULLSTACK, [p]);
-    expect(r!.aiSummary).toMatch(/technical \d+\/\d+.*80% weight|behavioral \d+\/\d+.*20% weight/i);
+    expect(r!.aiSummary).toMatch(/technical \d+\/\d+/i);
   });
 });
 

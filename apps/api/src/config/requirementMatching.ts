@@ -5,31 +5,49 @@ import { labelsFromList } from "../services/normalizeParsedJd.js";
 export const SCORE_WEIGHT_TECHNICAL = 80;
 export const SCORE_WEIGHT_BEHAVIORAL = 20;
 
-const DEFAULT_BEHAVIORAL_REQUIREMENTS = [
+/**
+ * Soft competencies rarely proven on a CV. Keep as interview signals —
+ * do NOT inject into resume match score when evidence is missing.
+ */
+export const INTERVIEW_ONLY_BEHAVIORAL = [
+  "Clear impact",
+  "Relevant ownership",
   "Strong communication",
+  "Comfort with ambiguity",
   "Collaboration and teamwork",
   "Ownership and accountability",
 ];
 
-const BEHAVIORAL_LABEL_PATTERNS = [
+const INTERVIEW_ONLY_PATTERNS = [
   /\bcommunication\b/i,
-  /\bleadership\b/i,
   /\bownership\b/i,
   /\bimpact\b/i,
   /\bambiguity\b/i,
   /\bteamwork\b/i,
   /\bcollaborat/i,
   /\bstakeholder/i,
-  /\bmentor/i,
-  /\bcoach/i,
-  /\bproblem[- ]?solving\b/i,
-  /\bcritical thinking\b/i,
   /\bculture\b/i,
-  /\bpresentation\b/i,
   /\binfluence\b/i,
   /\binitiative\b/i,
   /\badaptab/i,
 ];
+
+const BEHAVIORAL_LABEL_PATTERNS = [
+  ...INTERVIEW_ONLY_PATTERNS,
+  /\bleadership\b/i,
+  /\bmentor/i,
+  /\bcoach/i,
+  /\bproblem[- ]?solving\b/i,
+  /\bcritical thinking\b/i,
+  /\bpresentation\b/i,
+];
+
+export function isInterviewOnlyBehavioral(label: string): boolean {
+  const norm = label.toLowerCase().trim();
+  if (INTERVIEW_ONLY_BEHAVIORAL.some((x) => x.toLowerCase() === norm)) return true;
+  if (isGenericMustLabel(label)) return true;
+  return INTERVIEW_ONLY_PATTERNS.some((p) => p.test(norm));
+}
 
 const TECHNICAL_LABEL_PATTERNS = [
   /\btypescript\b/i,
@@ -159,7 +177,11 @@ export function classifyRequirement(label: string): RequirementCategory {
   if (TECHNICAL_LABEL_PATTERNS.some((p) => p.test(norm))) return "technical";
   if (REQUIREMENT_ALIASES[norm]) return "technical";
   if (/^[A-Z0-9+#.]+$/.test(label.trim()) || /\.(js|ts|py)\b/i.test(label)) return "technical";
-  return "behavioral";
+  // Prefer technical for skill-like tokens; soft fluff is caught above.
+  if (/\b(years?|experience|framework|language|stack|cloud|database|api)\b/i.test(norm)) {
+    return "technical";
+  }
+  return "technical";
 }
 
 export function partitionRequirements(labels: string[]): {
@@ -175,10 +197,11 @@ export function partitionRequirements(labels: string[]): {
   return { technical, behavioral };
 }
 
-/** Requirements used for scoring: technical skills + behavioral competencies. */
+/** Requirements used for resume scoring + interview-only soft signals (not scored). */
 export function resolveScoringRequirements(parsedJd: ParsedJD): {
   technical: string[];
   behavioral: string[];
+  interviewOnly: string[];
 } {
   const must = labelsFromList(parsedJd.mustHaves as unknown);
   const nice = labelsFromList(parsedJd.niceToHaves as unknown);
@@ -190,16 +213,20 @@ export function resolveScoringRequirements(parsedJd: ParsedJD): {
   if (technical.length < 2) {
     technical = dedupeLabels([...technical, ...technicalBase, ...skills]).slice(0, 8);
   }
-  if (behavioral.length === 0) {
-    behavioral = dedupeLabels([
-      ...nice.filter((n) => classifyRequirement(n) === "behavioral"),
-      ...DEFAULT_BEHAVIORAL_REQUIREMENTS,
-    ]).slice(0, 5);
-  }
+
+  // Soft traits → interview checklist only (do not invent defaults that punish CVs)
+  const interviewOnly = dedupeLabels([
+    ...behavioral.filter(isInterviewOnlyBehavioral),
+    ...must.filter(isInterviewOnlyBehavioral),
+    ...nice.filter(isInterviewOnlyBehavioral),
+  ]).slice(0, 8);
+
+  behavioral = behavioral.filter((b) => !isInterviewOnlyBehavioral(b)).slice(0, 6);
 
   return {
-    technical: technical.slice(0, 10),
-    behavioral: behavioral.slice(0, 6),
+    technical: technical.filter((t) => !isInterviewOnlyBehavioral(t)).slice(0, 10),
+    behavioral,
+    interviewOnly,
   };
 }
 
@@ -211,19 +238,24 @@ export function computeMatchScoreFromGaps(gaps: GapItem[]): {
   score: number;
   scoreBreakdown: Record<string, number>;
 } {
-  const tech = gaps.filter((g) => gapCategory(g) === "technical");
-  const beh = gaps.filter((g) => gapCategory(g) === "behavioral");
+  // Interview-only / info rows never affect resume match %
+  const scored = gaps.filter((g) => g.severity !== "info" && !isInterviewOnlyBehavioral(g.label));
+  const tech = scored.filter((g) => gapCategory(g) === "technical");
+  const beh = scored.filter((g) => gapCategory(g) === "behavioral");
   const techPct = tech.length ? tech.filter((g) => g.matched).length / tech.length : 0.5;
-  const behPct = beh.length ? beh.filter((g) => g.matched).length / beh.length : 0.5;
-  const raw = Math.round(techPct * SCORE_WEIGHT_TECHNICAL + behPct * SCORE_WEIGHT_BEHAVIORAL);
+  const behPct = beh.length ? beh.filter((g) => g.matched).length / beh.length : 1;
+  // No scored behavioral → weight 100% on technical (CV screening)
+  const techWeight = beh.length ? SCORE_WEIGHT_TECHNICAL : 100;
+  const behWeight = beh.length ? SCORE_WEIGHT_BEHAVIORAL : 0;
+  const raw = Math.round(techPct * techWeight + behPct * behWeight);
   const score = Math.min(98, Math.max(20, raw));
   return {
     score,
     scoreBreakdown: {
       technical: Math.round(techPct * 100),
       behavioral: Math.round(behPct * 100),
-      technicalWeight: SCORE_WEIGHT_TECHNICAL,
-      behavioralWeight: SCORE_WEIGHT_BEHAVIORAL,
+      technicalWeight: techWeight,
+      behavioralWeight: behWeight,
       technicalMatched: tech.filter((g) => g.matched).length,
       technicalTotal: tech.length,
       behavioralMatched: beh.filter((g) => g.matched).length,

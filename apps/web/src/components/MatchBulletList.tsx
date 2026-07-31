@@ -28,12 +28,19 @@ export function MatchBulletList({
     <div className={className}>
       {counts.total > 0 ? (
         <p className="mb-2 text-xs font-medium text-ink-muted">
-          Score: 80% technical + 20% behavioral
+          {showSplit
+            ? "Score: technical skills primary (soft traits assessed in interview)"
+            : "Score: based on technical / hard-skill fit vs JD"}
           {showSplit ? (
             <>
               {" "}
-              · Technical {counts.technicalMatched}/{counts.technicalTotal} · Behavioral{" "}
-              {counts.behavioralMatched}/{counts.behavioralTotal}
+              · Technical {counts.technicalMatched}/{counts.technicalTotal}
+              {counts.behavioralTotal > 0 ? (
+                <>
+                  {" "}
+                  · Behavioral {counts.behavioralMatched}/{counts.behavioralTotal}
+                </>
+              ) : null}
             </>
           ) : (
             <> · {counts.matched}/{counts.total} requirements matched</>

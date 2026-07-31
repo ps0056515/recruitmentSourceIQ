@@ -8,6 +8,7 @@ import { startSearch } from "../services/searchOrchestrator.js";
 import { isDemoMode } from "../lib/config.js";
 import { DEFAULT_WORKSPACE } from "../lib/config.js";
 import { importManualResume, importManualResumesBatch } from "../services/manualImportService.js";
+import { extractTextFromUpload } from "../services/resumeFileExtract.js";
 import { jobToApi } from "./jobHelpers.js";
 import { normalizeParsedJd } from "../services/normalizeParsedJd.js";
 import { prismaCandidateToApi } from "../services/candidateMapper.js";
@@ -201,6 +202,67 @@ jobsRouter.post("/:id/manual-import/batch", async (req, res) => {
     return res.status(201).json(result);
   } catch (e) {
     console.error("[manual-import/batch]", e);
+    return res.status(500).json({ error: "import_failed", message: String(e) });
+  }
+});
+
+jobsRouter.post("/:id/manual-import/files", async (req, res) => {
+  const sourceSite = req.body?.sourceSite as ProfileSource | undefined;
+  const raw = Array.isArray(req.body?.files) ? req.body.files : [];
+  if (!raw.length) {
+    return res.status(400).json({
+      error: "files_required",
+      message: "Upload at least one PDF, DOCX, or TXT resume.",
+    });
+  }
+  if (raw.length > 20) {
+    return res.status(400).json({ error: "too_many_files", message: "Upload up to 20 resumes at a time." });
+  }
+
+  const resumes: Array<{ resumeText: string; candidateName?: string }> = [];
+  const errors: Array<{ index: number; fileName?: string; error: string; message: string }> = [];
+
+  for (const [index, f] of raw.entries()) {
+    const fileName = String(f?.fileName ?? f?.name ?? `file-${index + 1}`);
+    try {
+      const extracted = await extractTextFromUpload({
+        fileName,
+        mimeType: f?.mimeType ? String(f.mimeType) : undefined,
+        contentBase64: String(f?.contentBase64 ?? ""),
+      });
+      resumes.push({
+        resumeText: extracted.resumeText,
+        candidateName: extracted.candidateName,
+      });
+    } catch (e) {
+      const error = e instanceof Error ? e.message : "extract_failed";
+      const message =
+        error === "unsupported_type"
+          ? `${fileName}: use PDF, DOCX, or TXT.`
+          : error === "doc_unsupported"
+            ? `${fileName}: legacy .doc is not supported — save as .docx or PDF.`
+            : error === "file_too_large"
+              ? `${fileName}: max 8 MB per file.`
+              : error === "resume_too_short" || error === "empty_file"
+                ? `${fileName}: could not extract enough text (try a text-based PDF).`
+                : `${fileName}: ${String(e)}`;
+      errors.push({ index, fileName, error, message });
+    }
+  }
+
+  if (!resumes.length) {
+    return res.status(400).json({
+      error: "extract_failed",
+      message: errors[0]?.message ?? "Could not read any resume files.",
+      errors,
+    });
+  }
+
+  try {
+    const result = await importManualResumesBatch(req.params.id, resumes, { sourceSite });
+    return res.status(201).json({ ...result, errors: [...(result.errors ?? []), ...errors] });
+  } catch (e) {
+    console.error("[manual-import/files]", e);
     return res.status(500).json({ error: "import_failed", message: String(e) });
   }
 });

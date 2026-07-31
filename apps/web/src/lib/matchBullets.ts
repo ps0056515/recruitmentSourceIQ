@@ -44,6 +44,8 @@ export function matchBulletsForCandidate(
   const items: MatchBullet[] = [];
 
   for (const g of candidate.gaps ?? []) {
+    // Interview-only soft signals (info) stay out of the resume match bullets
+    if (g.severity === "info") continue;
     if (g.label?.trim()) items.push(gapBullet(g));
   }
 
@@ -84,7 +86,7 @@ export function matchBulletCounts(candidate: Pick<Candidate, "gaps">): {
   behavioralMatched: number;
   behavioralTotal: number;
 } {
-  const gaps = candidate.gaps ?? [];
+  const gaps = (candidate.gaps ?? []).filter((g) => g.severity !== "info");
   const tech = gaps.filter((g) => gapCat(g) === "technical");
   const beh = gaps.filter((g) => gapCat(g) === "behavioral");
   const technicalMatched = tech.filter((g) => g.matched).length;

@@ -51,17 +51,42 @@ describe("requirementMatched", () => {
 });
 
 describe("computeMatchScoreFromGaps", () => {
-  it("weights technical 80% and behavioral 20%", () => {
+  it("ignores interview-only soft traits and scores technical fit", () => {
     const gaps: GapItem[] = [
       { id: "1", label: "TypeScript", severity: "must_have", matched: true, category: "technical" },
       { id: "2", label: "React", severity: "must_have", matched: true, category: "technical" },
       { id: "3", label: "Node.js", severity: "must_have", matched: false, category: "technical" },
       { id: "4", label: "PostgreSQL", severity: "must_have", matched: false, category: "technical" },
-      { id: "5", label: "Strong communication", severity: "nice_have", matched: true, category: "behavioral" },
-      { id: "6", label: "Collaboration", severity: "nice_have", matched: true, category: "behavioral" },
+      {
+        id: "5",
+        label: "Strong communication",
+        severity: "info",
+        matched: true,
+        category: "behavioral",
+      },
+      {
+        id: "6",
+        label: "Clear impact",
+        severity: "info",
+        matched: true,
+        category: "behavioral",
+      },
     ];
     const { score, scoreBreakdown } = computeMatchScoreFromGaps(gaps);
-    // tech 2/4 = 50% → 40; beh 2/2 = 100% → 20 → total 60
+    // tech 2/4 = 50% with 100% tech weight → 50
+    expect(score).toBe(50);
+    expect(scoreBreakdown.technicalWeight).toBe(100);
+    expect(scoreBreakdown.behavioralWeight).toBe(0);
+  });
+
+  it("still supports 80/20 when scorable (non-interview) behavioral gaps exist", () => {
+    const gaps: GapItem[] = [
+      { id: "1", label: "TypeScript", severity: "must_have", matched: true, category: "technical" },
+      { id: "2", label: "React", severity: "must_have", matched: false, category: "technical" },
+      { id: "3", label: "Mentorship", severity: "nice_have", matched: true, category: "behavioral" },
+    ];
+    const { score, scoreBreakdown } = computeMatchScoreFromGaps(gaps);
+    // tech 1/2 = 50% → 40; beh 1/1 = 100% → 20 → 60
     expect(score).toBe(60);
     expect(scoreBreakdown.technicalWeight).toBe(SCORE_WEIGHT_TECHNICAL);
     expect(scoreBreakdown.behavioralWeight).toBe(SCORE_WEIGHT_BEHAVIORAL);

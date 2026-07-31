@@ -180,6 +180,51 @@ export function LiveDiscovery() {
       setRecentImports((prev) => [...payload.results, ...prev].slice(0, 12));
       if (payload.results[0]) setExpandedId(payload.results[0].candidate.id);
       setResumeText("");
+      setPasteMode("batch");
+    } catch (e) {
+      setImportError(String(e));
+    } finally {
+      setImporting(false);
+    }
+  };
+
+  const readFileAsBase64 = (file: File) =>
+    new Promise<string>((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => {
+        const result = String(reader.result ?? "");
+        resolve(result.includes(",") ? result.split(",")[1]! : result);
+      };
+      reader.onerror = () => reject(reader.error ?? new Error("file_read_failed"));
+      reader.readAsDataURL(file);
+    });
+
+  const runFileUpload = async (fileList: FileList | null) => {
+    if (!fileList?.length) return;
+    const files = Array.from(fileList).slice(0, 20);
+    setImporting(true);
+    setImportError(null);
+    setBatchErrors([]);
+    try {
+      const encoded = await Promise.all(
+        files.map(async (file) => ({
+          fileName: file.name,
+          mimeType: file.type,
+          contentBase64: await readFileAsBase64(file),
+        })),
+      );
+      const payload = (await api(`/jobs/${id}/manual-import/files`, {
+        method: "POST",
+        body: JSON.stringify({ sourceSite, files: encoded }),
+      })) as BatchManualImportResult;
+      setPasteMode("batch");
+      setBatchResults(payload.results);
+      setBatchErrors(payload.errors ?? []);
+      setRecentImports((prev) => [...payload.results, ...prev].slice(0, 12));
+      if (payload.results[0]) {
+        setLastImport(payload.results[0]);
+        setExpandedId(payload.results[0].candidate.id);
+      }
     } catch (e) {
       setImportError(String(e));
     } finally {
@@ -199,7 +244,7 @@ export function LiveDiscovery() {
     <JobWorkspace>
       <PageHeader
         title="Live discovery"
-        subtitle="Run automated multi-source scans or paste resumes for instant JD comparison and improvement hints."
+        subtitle="Run automated multi-source scans, upload PDF/DOCX resumes, or paste text for instant JD comparison."
         actions={
           <Box className="flex gap-2">
             {tab === "auto" ? (
@@ -354,9 +399,27 @@ export function LiveDiscovery() {
               ) : null}
 
               <label className="mt-3 block">
-                <span className="label">{pasteMode === "batch" ? "Resumes (separated by ---)" : "Resume / profile text"}</span>
+                <span className="label">Upload resumes (PDF, DOCX, TXT)</span>
+                <input
+                  type="file"
+                  className="input mt-1 cursor-pointer text-sm file:mr-3 file:rounded-md file:border-0 file:bg-ocean file:px-3 file:py-1.5 file:text-xs file:font-semibold file:text-white"
+                  accept=".pdf,.docx,.txt,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,text/plain"
+                  multiple
+                  disabled={importing}
+                  onChange={(e) => {
+                    void runFileUpload(e.target.files);
+                    e.target.value = "";
+                  }}
+                />
+                <span className="mt-1 block text-[11px] text-ink-muted">
+                  Select one or many files (up to 20). Text is optional if you upload.
+                </span>
+              </label>
+
+              <label className="mt-3 block">
+                <span className="label">{pasteMode === "batch" ? "Or paste resumes (separated by ---)" : "Or paste resume / profile text"}</span>
                 <textarea
-                  className="input mt-1 min-h-[280px] resize-y font-mono text-xs leading-relaxed"
+                  className="input mt-1 min-h-[220px] resize-y font-mono text-xs leading-relaxed"
                   placeholder={
                     pasteMode === "batch"
                       ? "Resume 1 text…\n---\nResume 2 text…\n---\nResume 3 text…"
