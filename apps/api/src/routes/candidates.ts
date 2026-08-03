@@ -37,6 +37,10 @@ candidatesRouter.patch("/:id", async (req, res) => {
   const stage = req.body?.stage as PipelineStage | undefined;
   const contactStatus = req.body?.contactStatus as string | undefined;
   const notes = req.body?.notes !== undefined ? String(req.body.notes) : undefined;
+  const salarySignal =
+    req.body?.salarySignal !== undefined ? String(req.body.salarySignal).trim() || null : undefined;
+  const noticePeriod =
+    req.body?.noticePeriod !== undefined ? String(req.body.noticePeriod).trim() || null : undefined;
 
   try {
     const row = await prisma.candidate.update({
@@ -44,6 +48,8 @@ candidatesRouter.patch("/:id", async (req, res) => {
       data: {
         ...(stage ? { stage } : {}),
         ...(contactStatus ? { contactStatus } : {}),
+        ...(salarySignal !== undefined ? { salarySignal } : {}),
+        ...(noticePeriod !== undefined ? { noticePeriod } : {}),
       },
       include: { sources: true },
     });
@@ -58,6 +64,8 @@ candidatesRouter.patch("/:id", async (req, res) => {
       ...(stage ? { stage } : {}),
       ...(contactStatus ? { contactStatus: contactStatus as typeof c.contactStatus } : {}),
       ...(notes !== undefined ? { notes } : {}),
+      ...(salarySignal !== undefined ? { salarySignal: salarySignal ?? undefined } : {}),
+      ...(noticePeriod !== undefined ? { noticePeriod: noticePeriod ?? undefined } : {}),
     };
     memCandidates.set(c.id, next);
     return res.json({ candidate: next });

@@ -41,12 +41,88 @@ export function improvementsFromGaps(gaps: GapItem[] | undefined): ResumeImprove
     }));
 }
 
+function scoredGaps(gaps: GapItem[] | undefined): GapItem[] {
+  return (gaps ?? []).filter((g) => g.severity !== "info");
+}
+
 function enrichResult(result: Omit<ManualImportResult, "verdict" | "improvements">): ManualImportResult {
+  const gaps = scoredGaps(result.candidate.gaps);
+  const matchedLabels = gaps.filter((g) => g.matched).map((g) => g.label);
+  const missingLabels = gaps.filter((g) => !g.matched).map((g) => g.label);
   return {
     ...result,
     verdict: matchVerdictForCandidate(result.candidate),
     improvements: improvementsFromGaps(result.candidate.gaps),
+    matchedCount: matchedLabels.length,
+    missingCount: missingLabels.length,
+    matchedLabels,
+    missingLabels,
   };
+}
+
+/** Rank cohort + explain why #1 beats #2, etc. */
+export function attachComparativeRanking(results: ManualImportResult[]): {
+  results: ManualImportResult[];
+  requirementColumns: Array<{ label: string; severity: GapItem["severity"] }>;
+  comparisonSummary: string;
+} {
+  const sorted = [...results].sort((a, b) => {
+    const scoreDiff = b.candidate.matchScore - a.candidate.matchScore;
+    if (scoreDiff !== 0) return scoreDiff;
+    const matchDiff = (b.matchedCount ?? 0) - (a.matchedCount ?? 0);
+    if (matchDiff !== 0) return matchDiff;
+    return a.candidate.name.localeCompare(b.candidate.name);
+  });
+
+  const labelMeta = new Map<string, GapItem["severity"]>();
+  for (const r of sorted) {
+    for (const g of scoredGaps(r.candidate.gaps)) {
+      if (!labelMeta.has(g.label)) labelMeta.set(g.label, g.severity);
+    }
+  }
+  const requirementColumns = [...labelMeta.entries()].map(([label, severity]) => ({ label, severity }));
+
+  const ranked = sorted.map((r, i) => {
+    const rank = i + 1;
+    const next = sorted[i + 1];
+    let rankReason: string;
+    if (sorted.length === 1) {
+      rankReason = `Only profile in this batch — scored ${Math.round(r.candidate.matchScore)}% vs JD (${r.matchedCount ?? 0} matched, ${r.missingCount ?? 0} missing). Upload more resumes together to compare.`;
+    } else if (rank === 1 && next) {
+      const delta = Math.round(r.candidate.matchScore - next.candidate.matchScore);
+      const extra = (r.matchedLabels ?? []).filter((l) => !(next.matchedLabels ?? []).includes(l));
+      const parts = [
+        `#1 of ${sorted.length} — ${Math.round(r.candidate.matchScore)}% vs JD`,
+        delta > 0 ? `${delta} points above ${next.candidate.name}` : `tied on score with ${next.candidate.name}; ranked by more matched requirements`,
+      ];
+      if (extra.length) parts.push(`unique matches: ${extra.slice(0, 4).join(", ")}`);
+      if ((r.missingLabels ?? []).length) parts.push(`still missing: ${(r.missingLabels ?? []).slice(0, 3).join(", ")}`);
+      rankReason = parts.join(". ") + ".";
+    } else {
+      const above = sorted[i - 1]!;
+      const delta = Math.round(above.candidate.matchScore - r.candidate.matchScore);
+      const behindOn = (above.matchedLabels ?? []).filter((l) => !(r.matchedLabels ?? []).includes(l));
+      const parts = [
+        `#${rank} of ${sorted.length} — ${Math.round(r.candidate.matchScore)}% vs JD`,
+        delta > 0
+          ? `${delta} points below ${above.candidate.name}`
+          : `same score as ${above.candidate.name}; fewer matched requirements`,
+      ];
+      if (behindOn.length) parts.push(`behind on: ${behindOn.slice(0, 4).join(", ")}`);
+      if ((r.matchedLabels ?? []).length) parts.push(`has: ${(r.matchedLabels ?? []).slice(0, 4).join(", ")}`);
+      if ((r.missingLabels ?? []).length) parts.push(`missing: ${(r.missingLabels ?? []).slice(0, 4).join(", ")}`);
+      rankReason = parts.join(". ") + ".";
+    }
+    return { ...r, rank, rankReason };
+  });
+
+  const top = ranked[0];
+  const comparisonSummary =
+    ranked.length <= 1
+      ? "Upload 2+ resumes in one go to see a transparent head-to-head ranking."
+      : `Ranked ${ranked.length} profiles vs the same JD. #1 ${top?.candidate.name ?? ""} (${Math.round(top?.candidate.matchScore ?? 0)}%) — ordering is by match % then # of requirements matched. Soft traits are not scored from CVs.`;
+
+  return { results: ranked, requirementColumns, comparisonSummary };
 }
 
 async function getJob(jobId: string): Promise<(Job & { workspaceId?: string }) | null> {
@@ -88,7 +164,12 @@ function fallbackJd(job: Job): ParsedJD {
 export async function importManualResume(
   jobId: string,
   resumeText: string,
-  options?: { candidateName?: string; sourceSite?: ProfileSource },
+  options?: {
+    candidateName?: string;
+    sourceSite?: ProfileSource;
+    salarySignal?: string;
+    noticePeriod?: string;
+  },
 ): Promise<ManualImportResult> {
   const trimmed = resumeText.trim();
   if (trimmed.length < 40) {
@@ -165,7 +246,12 @@ export async function importManualResume(
 
 export async function importManualResumesBatch(
   jobId: string,
-  resumes: Array<{ resumeText: string; candidateName?: string }>,
+  resumes: Array<{
+    resumeText: string;
+    candidateName?: string;
+    salarySignal?: string;
+    noticePeriod?: string;
+  }>,
   options?: { sourceSite?: ProfileSource },
 ): Promise<BatchManualImportResult> {
   const results: ManualImportResult[] = [];
@@ -176,6 +262,8 @@ export async function importManualResumesBatch(
       const result = await importManualResume(jobId, item.resumeText, {
         candidateName: item.candidateName,
         sourceSite: options?.sourceSite,
+        salarySignal: item.salarySignal,
+        noticePeriod: item.noticePeriod,
       });
       results.push(result);
     } catch (e) {
@@ -193,6 +281,6 @@ export async function importManualResumesBatch(
     }
   }
 
-  results.sort((a, b) => b.candidate.matchScore - a.candidate.matchScore);
-  return { results, errors };
+  const compared = attachComparativeRanking(results);
+  return { ...compared, errors };
 }

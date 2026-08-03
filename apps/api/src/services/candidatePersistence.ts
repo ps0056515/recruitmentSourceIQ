@@ -49,6 +49,8 @@ export async function persistRankedCandidates(jobId: string, ranked: RankedProfi
           phone: r.profile.phone,
           location: r.profile.location,
           headline: r.profile.headline,
+          ...(r.profile.salarySignal ? { salarySignal: r.profile.salarySignal } : {}),
+          ...(r.profile.noticePeriod ? { noticePeriod: r.profile.noticePeriod } : {}),
         },
       });
 
@@ -73,6 +75,8 @@ export async function persistRankedCandidates(jobId: string, ranked: RankedProfi
           (r.profile.profileUrl?.includes("linkedin") ? r.profile.profileUrl : undefined),
         githubUrl: r.profile.raw?.githubUrl as string | undefined,
         portfolioUrl: r.profile.raw?.portfolioUrl as string | undefined,
+        salarySignal: r.profile.salarySignal ?? candidate.salarySignal ?? undefined,
+        noticePeriod: r.profile.noticePeriod ?? candidate.noticePeriod ?? undefined,
         aiSummary: r.aiSummary,
         percentile: r.percentile,
         scoreBreakdown: r.scoreBreakdown,
@@ -98,6 +102,8 @@ export async function persistRankedCandidates(jobId: string, ranked: RankedProfi
         linkedInUrl: r.profile.raw?.linkedInUrl as string | undefined,
         githubUrl: r.profile.raw?.githubUrl as string | undefined,
         portfolioUrl: r.profile.raw?.portfolioUrl as string | undefined,
+        salarySignal: r.profile.salarySignal,
+        noticePeriod: r.profile.noticePeriod,
         aiSummary: r.aiSummary,
       });
     }

@@ -14,17 +14,46 @@ export function CandidateProfile() {
   const { candidateId } = useParams();
   const id = useMemo(() => candidateId ?? "", [candidateId]);
   const [data, setData] = useState<{ candidate: Candidate; job: Job } | null>(null);
+  const [budget, setBudget] = useState("");
+  const [notice, setNotice] = useState("");
+  const [savingComp, setSavingComp] = useState(false);
+  const [compMsg, setCompMsg] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
     (async () => {
       const res = await api(`/candidates/${id}`);
-      if (!cancelled) setData({ candidate: res.candidate, job: res.job });
+      if (!cancelled) {
+        setData({ candidate: res.candidate, job: res.job });
+        setBudget(String(res.candidate.salarySignal ?? ""));
+        setNotice(String(res.candidate.noticePeriod ?? ""));
+      }
     })();
     return () => {
       cancelled = true;
     };
   }, [id]);
+
+  const saveCompensation = async () => {
+    if (!data) return;
+    setSavingComp(true);
+    setCompMsg(null);
+    try {
+      const res = await api(`/candidates/${id}`, {
+        method: "PATCH",
+        body: JSON.stringify({
+          salarySignal: budget.trim(),
+          noticePeriod: notice.trim(),
+        }),
+      });
+      setData({ ...data, candidate: res.candidate as Candidate });
+      setCompMsg("Budget & notice saved.");
+    } catch (e) {
+      setCompMsg(String(e));
+    } finally {
+      setSavingComp(false);
+    }
+  };
 
   if (!data) {
     return <p className="text-sm text-ink-muted">Loading profile…</p>;
@@ -72,6 +101,39 @@ export function CandidateProfile() {
             <p className="text-xs text-ink-muted">Outreach: {candidate.contactStatus.replace("_", " ")}</p>
           </Box>
           <CandidateContactDetails contact={contactFromCandidate(candidate)} className="mt-4 text-left" />
+
+          <section className="mt-4 rounded-xl border border-ink/8 bg-sand/60 px-3 py-2.5">
+            <p className="text-[10px] font-semibold uppercase tracking-wide text-slateiq">
+              Budget / compensation
+            </p>
+            <label className="mt-2 block">
+              <span className="label">Expected CTC / budget</span>
+              <input
+                className="input mt-1"
+                placeholder="e.g. 18–22 LPA"
+                value={budget}
+                onChange={(e) => setBudget(e.target.value)}
+              />
+            </label>
+            <label className="mt-2 block">
+              <span className="label">Notice period</span>
+              <input
+                className="input mt-1"
+                placeholder="e.g. 30 days / Immediate"
+                value={notice}
+                onChange={(e) => setNotice(e.target.value)}
+              />
+            </label>
+            <button
+              type="button"
+              className="btn-primary mt-3 w-full text-sm"
+              disabled={savingComp}
+              onClick={() => void saveCompensation()}
+            >
+              {savingComp ? "Saving…" : "Save budget"}
+            </button>
+            {compMsg ? <p className="mt-2 text-xs text-ink-muted">{compMsg}</p> : null}
+          </section>
         </Box>
 
         <Box className="space-y-5 lg:col-span-2">

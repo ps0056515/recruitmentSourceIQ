@@ -159,9 +159,16 @@ jobsRouter.post("/:id/manual-import", async (req, res) => {
   const resumeText = String(req.body?.resumeText ?? "");
   const candidateName = req.body?.candidateName ? String(req.body.candidateName) : undefined;
   const sourceSite = req.body?.sourceSite as ProfileSource | undefined;
+  const salarySignal = req.body?.salarySignal ? String(req.body.salarySignal) : undefined;
+  const noticePeriod = req.body?.noticePeriod ? String(req.body.noticePeriod) : undefined;
 
   try {
-    const result = await importManualResume(req.params.id, resumeText, { candidateName, sourceSite });
+    const result = await importManualResume(req.params.id, resumeText, {
+      candidateName,
+      sourceSite,
+      salarySignal,
+      noticePeriod,
+    });
     return res.status(201).json(result);
   } catch (e) {
     const msg = e instanceof Error ? e.message : "import_failed";

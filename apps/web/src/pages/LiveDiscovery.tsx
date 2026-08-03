@@ -1,5 +1,6 @@
 import type {
   BatchManualImportResult,
+  BatchRequirementColumn,
   ManualImportResult,
   MatchVerdict,
   ProfileSource,
@@ -17,6 +18,7 @@ import { SourceDot } from "../components/SourceDot";
 import { PageHeader } from "../components/ui/PageHeader";
 import { useJob } from "../hooks/useJob";
 import api from "../lib/api";
+import { mergeAndRankBatch } from "../lib/batchRank";
 
 type WsMsg =
   | { type: "hello"; jobId: string }
@@ -97,6 +99,8 @@ export function LiveDiscovery() {
 
   const [resumeText, setResumeText] = useState("");
   const [candidateName, setCandidateName] = useState("");
+  const [salarySignal, setSalarySignal] = useState("");
+  const [noticePeriod, setNoticePeriod] = useState("");
   const [sourceSite, setSourceSite] = useState<ProfileSource>("linkedin");
   const [importing, setImporting] = useState(false);
   const [importError, setImportError] = useState<string | null>(null);
@@ -104,7 +108,46 @@ export function LiveDiscovery() {
   const [recentImports, setRecentImports] = useState<ManualImportResult[]>([]);
   const [batchResults, setBatchResults] = useState<ManualImportResult[]>([]);
   const [batchErrors, setBatchErrors] = useState<BatchManualImportResult["errors"]>([]);
+  const [requirementColumns, setRequirementColumns] = useState<BatchRequirementColumn[]>([]);
+  const [comparisonSummary, setComparisonSummary] = useState<string | null>(null);
   const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [batchFilter, setBatchFilter] = useState<"all" | MatchVerdict>("all");
+  const [batchQuery, setBatchQuery] = useState("");
+  const [showMatrix, setShowMatrix] = useState(false);
+
+  const selectedBatch = useMemo(
+    () => batchResults.find((r) => r.candidate.id === expandedId) ?? batchResults[0] ?? null,
+    [batchResults, expandedId],
+  );
+
+  const filteredBatch = useMemo(() => {
+    const q = batchQuery.trim().toLowerCase();
+    return batchResults.filter((r) => {
+      if (batchFilter !== "all" && r.verdict !== batchFilter) return false;
+      if (q && !r.candidate.name.toLowerCase().includes(q)) return false;
+      return true;
+    });
+  }, [batchResults, batchFilter, batchQuery]);
+
+  /** Matrix only for top ranks — keeps UI usable at 10–20 profiles */
+  const matrixCandidates = useMemo(() => batchResults.slice(0, 5), [batchResults]);
+
+  const applyBatchPayload = (payload: BatchManualImportResult, merge: boolean) => {
+    setBatchResults((prev) => {
+      const merged = mergeAndRankBatch(merge ? prev : [], payload.results);
+      setRequirementColumns(
+        payload.requirementColumns?.length ? payload.requirementColumns : merged.requirementColumns,
+      );
+      setComparisonSummary(payload.comparisonSummary ?? merged.comparisonSummary);
+      if (merged.results[0]) {
+        setLastImport(merged.results[0]);
+        setExpandedId(merged.results[0].candidate.id);
+      }
+      return merged.results;
+    });
+    setBatchErrors(payload.errors ?? []);
+    setRecentImports((prev) => [...payload.results, ...prev].slice(0, 12));
+  };
 
   useEffect(() => {
     if (!id || tab !== "auto") return;
@@ -146,11 +189,15 @@ export function LiveDiscovery() {
           resumeText,
           candidateName: candidateName.trim() || undefined,
           sourceSite,
+          salarySignal: salarySignal.trim() || undefined,
+          noticePeriod: noticePeriod.trim() || undefined,
         }),
       })) as ManualImportResult;
       setLastImport(result);
       setRecentImports((prev) => [result, ...prev].slice(0, 8));
       setResumeText("");
+      setSalarySignal("");
+      setNoticePeriod("");
     } catch (e) {
       setImportError(String(e));
     } finally {
@@ -172,13 +219,14 @@ export function LiveDiscovery() {
         method: "POST",
         body: JSON.stringify({
           sourceSite,
-          resumes: chunks.map((text) => ({ resumeText: text })),
+          resumes: chunks.map((text) => ({
+            resumeText: text,
+            salarySignal: salarySignal.trim() || undefined,
+            noticePeriod: noticePeriod.trim() || undefined,
+          })),
         }),
       })) as BatchManualImportResult;
-      setBatchResults(payload.results);
-      setBatchErrors(payload.errors ?? []);
-      setRecentImports((prev) => [...payload.results, ...prev].slice(0, 12));
-      if (payload.results[0]) setExpandedId(payload.results[0].candidate.id);
+      applyBatchPayload(payload, true);
       setResumeText("");
       setPasteMode("batch");
     } catch (e) {
@@ -218,13 +266,7 @@ export function LiveDiscovery() {
         body: JSON.stringify({ sourceSite, files: encoded }),
       })) as BatchManualImportResult;
       setPasteMode("batch");
-      setBatchResults(payload.results);
-      setBatchErrors(payload.errors ?? []);
-      setRecentImports((prev) => [...payload.results, ...prev].slice(0, 12));
-      if (payload.results[0]) {
-        setLastImport(payload.results[0]);
-        setExpandedId(payload.results[0].candidate.id);
-      }
+      applyBatchPayload(payload, true);
     } catch (e) {
       setImportError(String(e));
     } finally {
@@ -398,6 +440,32 @@ export function LiveDiscovery() {
                 </label>
               ) : null}
 
+              <div className="mt-3 grid grid-cols-2 gap-2">
+                <label className="block">
+                  <span className="label">Budget / expected CTC</span>
+                  <input
+                    className="input"
+                    placeholder="e.g. 18–22 LPA"
+                    value={salarySignal}
+                    onChange={(e) => setSalarySignal(e.target.value)}
+                  />
+                </label>
+                <label className="block">
+                  <span className="label">Notice period</span>
+                  <input
+                    className="input"
+                    placeholder="e.g. 30 days"
+                    value={noticePeriod}
+                    onChange={(e) => setNoticePeriod(e.target.value)}
+                  />
+                </label>
+              </div>
+              <p className="mt-1 text-[11px] text-ink-muted">
+                {pasteMode === "batch"
+                  ? "Used when pasting text (if resume doesn’t already mention CTC). PDF text is auto-scanned for LPA/CTC."
+                  : "Enter manually, or leave blank to auto-detect from resume text (CTC / LPA / notice)."}
+              </p>
+
               <label className="mt-3 block">
                 <span className="label">Upload resumes (PDF, DOCX, TXT)</span>
                 <input
@@ -412,7 +480,8 @@ export function LiveDiscovery() {
                   }}
                 />
                 <span className="mt-1 block text-[11px] text-ink-muted">
-                  Select one or many files (up to 20). Text is optional if you upload.
+                  Multi-select files (Ctrl/Cmd+click) to rank them against each other. New uploads merge into this
+                  batch.
                 </span>
               </label>
 
@@ -463,60 +532,276 @@ export function LiveDiscovery() {
               {pasteMode === "batch" ? (
                 <>
                   {batchResults.length ? (
-                    <Box className="card card-pad">
-                      <Box className="flex flex-wrap items-center justify-between gap-2">
+                    <Box className="card card-pad space-y-3">
+                      <Box className="flex flex-wrap items-start justify-between gap-2">
                         <Box>
-                          <p className="text-xs font-semibold uppercase text-slateiq">Batch comparison</p>
+                          <p className="text-xs font-semibold uppercase text-slateiq">Leaderboard</p>
                           <p className="text-sm text-ink-muted">
-                            {batchResults.length} scored · {strongCount} strong · {partialCount} partial · {weakCount}{" "}
+                            {batchResults.length} ranked · {strongCount} strong · {partialCount} partial · {weakCount}{" "}
                             weak
                           </p>
                         </Box>
-                        <Link to={`/jobs/${id}/ranked`} className="btn-secondary text-sm">
-                          Open ranked list
-                        </Link>
+                        <Box className="flex flex-wrap gap-2">
+                          <button
+                            type="button"
+                            className="btn-secondary text-sm"
+                            onClick={() => {
+                              setBatchResults([]);
+                              setRequirementColumns([]);
+                              setComparisonSummary(null);
+                              setBatchErrors([]);
+                              setBatchFilter("all");
+                              setBatchQuery("");
+                              setShowMatrix(false);
+                            }}
+                          >
+                            Clear
+                          </button>
+                          <Link to={`/jobs/${id}/ranked`} className="btn-secondary text-sm">
+                            Pipeline list
+                          </Link>
+                        </Box>
                       </Box>
 
-                      <ul className="mt-4 divide-y divide-black/5">
-                        {batchResults.map((r) => {
-                          const open = expandedId === r.candidate.id;
-                          return (
-                            <li key={r.candidate.id} className="py-3">
-                              <button
-                                type="button"
-                                className="flex w-full items-start justify-between gap-3 text-left"
-                                onClick={() => setExpandedId(open ? null : r.candidate.id)}
-                              >
-                                <Box>
-                                  <Box className="flex flex-wrap items-center gap-2">
-                                    <span className="font-semibold text-ink">{r.candidate.name}</span>
-                                    <VerdictPill verdict={r.verdict} />
-                                  </Box>
-                                  <p className="mt-0.5 text-xs text-ink-muted">{r.candidate.headline}</p>
-                                </Box>
-                                <MatchBadge score={r.candidate.matchScore} gaps={r.candidate.gaps} />
-                              </button>
-                              {open ? (
-                                <Box className="mt-3 rounded-xl bg-sand/50 px-3 py-3">
-                                  <MatchBulletList candidate={r.candidate} className="mt-0" />
-                                  <ImprovementsList result={r} />
-                                  <Box className="mt-3">
-                                    <Link
-                                      to={`/candidates/${r.candidate.id}`}
-                                      className="text-sm font-medium text-ocean hover:underline"
+                      {/* Compact top-3 strip when many profiles */}
+                      {batchResults.length > 5 ? (
+                        <div className="grid grid-cols-3 gap-2">
+                          {batchResults.slice(0, 3).map((r) => (
+                            <button
+                              key={`top-${r.candidate.id}`}
+                              type="button"
+                              onClick={() => setExpandedId(r.candidate.id)}
+                              className={`rounded-xl border px-2 py-2 text-left transition ${
+                                selectedBatch?.candidate.id === r.candidate.id
+                                  ? "border-ocean bg-ocean-light"
+                                  : "border-black/10 bg-sand/40 hover:border-ocean/40"
+                              }`}
+                            >
+                              <p className="text-[10px] font-bold text-ocean">#{r.rank}</p>
+                              <p className="truncate text-xs font-semibold text-ink">{r.candidate.name}</p>
+                              <p className="text-sm font-bold text-emerald">{Math.round(r.candidate.matchScore)}</p>
+                            </button>
+                          ))}
+                        </div>
+                      ) : null}
+
+                      <Box className="flex flex-wrap items-center gap-2">
+                        {(
+                          [
+                            ["all", `All (${batchResults.length})`],
+                            ["strong_match", `Strong (${strongCount})`],
+                            ["partial_match", `Partial (${partialCount})`],
+                            ["weak_match", `Weak (${weakCount})`],
+                          ] as const
+                        ).map(([key, label]) => (
+                          <button
+                            key={key}
+                            type="button"
+                            onClick={() => setBatchFilter(key)}
+                            className={`rounded-full px-2.5 py-1 text-[11px] font-semibold ${
+                              batchFilter === key
+                                ? "bg-ocean text-white"
+                                : "bg-sand text-ink-muted hover:bg-sand-dark"
+                            }`}
+                          >
+                            {label}
+                          </button>
+                        ))}
+                        <input
+                          className="input ml-auto min-w-[140px] max-w-[200px] py-1.5 text-xs"
+                          placeholder="Filter by name…"
+                          value={batchQuery}
+                          onChange={(e) => setBatchQuery(e.target.value)}
+                        />
+                      </Box>
+
+                      {batchResults.length === 1 ? (
+                        <p className="rounded-lg border border-action/25 bg-action-light px-3 py-2 text-xs text-action">
+                          Only one profile scored. Multi-select more PDFs — they merge into this leaderboard.
+                        </p>
+                      ) : null}
+
+                      {/* Dense scrollable leaderboard + detail side panel */}
+                      <div className="grid gap-3 lg:grid-cols-5">
+                        <div className="max-h-[420px] overflow-auto rounded-xl border border-black/10 lg:col-span-3">
+                          <table className="min-w-full text-left text-xs">
+                            <thead className="sticky top-0 z-10 bg-sand text-[10px] uppercase tracking-wide text-slateiq">
+                              <tr>
+                                <th className="px-2 py-2 font-semibold">#</th>
+                                <th className="px-2 py-2 font-semibold">Candidate</th>
+                                <th className="px-2 py-2 font-semibold">Budget</th>
+                                <th className="px-2 py-2 font-semibold">Score</th>
+                                <th className="px-2 py-2 font-semibold">Fit</th>
+                                <th className="px-2 py-2 font-semibold">Gaps</th>
+                              </tr>
+                            </thead>
+                            <tbody className="divide-y divide-black/5 bg-white">
+                              {filteredBatch.length === 0 ? (
+                                <tr>
+                                  <td colSpan={6} className="px-3 py-6 text-center text-ink-muted">
+                                    No profiles match this filter.
+                                  </td>
+                                </tr>
+                              ) : (
+                                filteredBatch.map((r) => {
+                                  const active = selectedBatch?.candidate.id === r.candidate.id;
+                                  return (
+                                    <tr
+                                      key={`row-${r.candidate.id}`}
+                                      className={`cursor-pointer ${active ? "bg-ocean-light/50" : "hover:bg-sand/50"}`}
+                                      onClick={() => setExpandedId(r.candidate.id)}
                                     >
-                                      View full profile →
-                                    </Link>
-                                  </Box>
+                                      <td className="px-2 py-1.5 font-bold text-ocean">#{r.rank}</td>
+                                      <td className="max-w-[120px] truncate px-2 py-1.5 font-semibold text-ink">
+                                        {r.candidate.name}
+                                      </td>
+                                      <td className="max-w-[90px] truncate px-2 py-1.5 text-[11px] text-ink-muted">
+                                        {r.candidate.salarySignal || "—"}
+                                      </td>
+                                      <td className="px-2 py-1.5">
+                                        <div className="flex items-center gap-1.5">
+                                          <div className="h-1 w-10 overflow-hidden rounded-full bg-sand-dark">
+                                            <div
+                                              className="h-full rounded-full bg-emerald"
+                                              style={{
+                                                width: `${Math.min(100, Math.round(r.candidate.matchScore))}%`,
+                                              }}
+                                            />
+                                          </div>
+                                          <span className="font-bold">{Math.round(r.candidate.matchScore)}</span>
+                                        </div>
+                                      </td>
+                                      <td className="px-2 py-1.5 text-emerald">{r.matchedCount ?? 0}</td>
+                                      <td className="px-2 py-1.5 text-coral">{r.missingCount ?? 0}</td>
+                                    </tr>
+                                  );
+                                })
+                              )}
+                            </tbody>
+                          </table>
+                        </div>
+
+                        <div className="rounded-xl border border-black/10 bg-sand/30 p-3 lg:col-span-2">
+                          {selectedBatch ? (
+                            <>
+                              <Box className="flex items-start justify-between gap-2">
+                                <Box>
+                                  <p className="text-[10px] font-bold uppercase text-ocean">
+                                    Selected · #{selectedBatch.rank}
+                                  </p>
+                                  <h3 className="text-sm font-bold text-ink">{selectedBatch.candidate.name}</h3>
                                 </Box>
+                                <MatchBadge
+                                  score={selectedBatch.candidate.matchScore}
+                                  gaps={selectedBatch.candidate.gaps}
+                                />
+                              </Box>
+                              <p className="mt-2 text-[11px] leading-snug text-ink/80">{selectedBatch.rankReason}</p>
+                              <div className="mt-2 flex flex-wrap gap-1">
+                                <VerdictPill verdict={selectedBatch.verdict} />
+                                <span className="rounded-full bg-white px-2 py-0.5 text-[10px] text-ink-muted">
+                                  {selectedBatch.matchedCount ?? 0} matched
+                                </span>
+                                <span className="rounded-full bg-white px-2 py-0.5 text-[10px] text-ink-muted">
+                                  {selectedBatch.missingCount ?? 0} missing
+                                </span>
+                                {selectedBatch.candidate.salarySignal ? (
+                                  <span className="rounded-full bg-white px-2 py-0.5 text-[10px] font-semibold text-ink">
+                                    Budget: {selectedBatch.candidate.salarySignal}
+                                  </span>
+                                ) : (
+                                  <span className="rounded-full bg-coral-light px-2 py-0.5 text-[10px] text-coral">
+                                    Budget not set
+                                  </span>
+                                )}
+                                {selectedBatch.candidate.noticePeriod ? (
+                                  <span className="rounded-full bg-white px-2 py-0.5 text-[10px] text-ink-muted">
+                                    Notice: {selectedBatch.candidate.noticePeriod}
+                                  </span>
+                                ) : null}
+                              </div>
+                              <div className="mt-2 max-h-[240px] overflow-y-auto">
+                                <MatchBulletList candidate={selectedBatch.candidate} className="mt-0" />
+                                <ImprovementsList result={selectedBatch} />
+                              </div>
+                              <Link
+                                to={`/candidates/${selectedBatch.candidate.id}`}
+                                className="mt-2 inline-block text-xs font-medium text-ocean hover:underline"
+                              >
+                                Open full profile →
+                              </Link>
+                            </>
+                          ) : (
+                            <p className="text-xs text-ink-muted">Select a row to see why they ranked there.</p>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Optional matrix: top 5 only */}
+                      {requirementColumns.length > 0 ? (
+                        <div>
+                          <button
+                            type="button"
+                            className="text-xs font-semibold text-ocean hover:underline"
+                            onClick={() => setShowMatrix((v) => !v)}
+                          >
+                            {showMatrix ? "Hide" : "Show"} skill matrix (top {matrixCandidates.length})
+                          </button>
+                          {showMatrix ? (
+                            <div className="mt-2 max-h-[240px] overflow-auto rounded-xl border border-black/10">
+                              <table className="min-w-full text-left text-[11px]">
+                                <thead className="sticky top-0 bg-sand">
+                                  <tr>
+                                    <th className="px-2 py-1.5 font-semibold text-ink-muted">Skill</th>
+                                    {matrixCandidates.map((r) => (
+                                      <th key={`h-${r.candidate.id}`} className="px-2 py-1.5 font-semibold">
+                                        #{r.rank}
+                                      </th>
+                                    ))}
+                                  </tr>
+                                </thead>
+                                <tbody className="divide-y divide-black/5 bg-white">
+                                  {requirementColumns.map((col) => (
+                                    <tr key={col.label}>
+                                      <td className="px-2 py-1 text-ink">
+                                        {col.label}
+                                        {col.severity === "must_have" ? (
+                                          <span className="ml-1 text-[9px] font-bold text-coral">must</span>
+                                        ) : null}
+                                      </td>
+                                      {matrixCandidates.map((r) => {
+                                        const gap = (r.candidate.gaps ?? []).find(
+                                          (g) => g.label.toLowerCase() === col.label.toLowerCase(),
+                                        );
+                                        return (
+                                          <td
+                                            key={`${r.candidate.id}-${col.label}`}
+                                            className={`px-2 py-1 font-bold ${gap?.matched ? "text-emerald" : "text-coral"}`}
+                                          >
+                                            {gap?.matched ? "✓" : "✗"}
+                                          </td>
+                                        );
+                                      })}
+                                    </tr>
+                                  ))}
+                                </tbody>
+                              </table>
+                              {batchResults.length > 5 ? (
+                                <p className="border-t border-black/5 px-2 py-1.5 text-[10px] text-ink-muted">
+                                  Matrix shows top 5 only. Click any leaderboard row for full detail on #6+.
+                                </p>
                               ) : null}
-                            </li>
-                          );
-                        })}
-                      </ul>
+                            </div>
+                          ) : null}
+                        </div>
+                      ) : null}
+
+                      {comparisonSummary ? (
+                        <p className="text-[11px] text-ink-muted">{comparisonSummary}</p>
+                      ) : null}
 
                       {batchErrors.length ? (
-                        <p className="mt-3 text-xs text-coral">
+                        <p className="text-xs text-coral">
                           {batchErrors.length} resume{batchErrors.length === 1 ? "" : "s"} could not be scored
                           {batchErrors[0]?.message ? ` (${batchErrors[0].message})` : ""}.
                         </p>
@@ -524,8 +809,8 @@ export function LiveDiscovery() {
                     </Box>
                   ) : (
                     <Box className="card card-pad text-sm text-ink-muted">
-                      Paste multiple resumes separated by <code className="text-ink">---</code>, then compare. You’ll
-                      see strong / partial / weak matches and what each resume should improve vs the JD.
+                      Multi-select resumes (works well up to 20). You’ll get a compact scrollable leaderboard — click
+                      one row for details, not a wall of cards.
                     </Box>
                   )}
                 </>

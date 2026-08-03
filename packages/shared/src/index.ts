@@ -59,11 +59,27 @@ export interface ManualImportResult {
   } & CandidateContact;
   verdict: MatchVerdict;
   improvements: ResumeImprovement[];
+  /** 1 = best fit in this comparison batch */
+  rank?: number;
+  matchedCount?: number;
+  missingCount?: number;
+  matchedLabels?: string[];
+  missingLabels?: string[];
+  /** Plain-English why this rank vs the cohort */
+  rankReason?: string;
+}
+
+export interface BatchRequirementColumn {
+  label: string;
+  severity: "must_have" | "nice_have" | "info";
 }
 
 export interface BatchManualImportResult {
   results: ManualImportResult[];
   errors: Array<{ index: number; error: string; message?: string }>;
+  /** Shared JD requirement columns for transparent matrix */
+  requirementColumns?: BatchRequirementColumn[];
+  comparisonSummary?: string;
 }
 
 export const PRD_SOURCES: ProfileSource[] = [

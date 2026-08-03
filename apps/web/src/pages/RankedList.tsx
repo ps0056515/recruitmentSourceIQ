@@ -82,6 +82,7 @@ export function RankedList() {
               <tr>
                 <th className="px-4 py-3 font-semibold">Candidate</th>
                 <th className="px-4 py-3 font-semibold">Source</th>
+                <th className="px-4 py-3 font-semibold">Budget</th>
                 <th className="px-4 py-3 font-semibold">Match</th>
                 <th className="px-4 py-3 font-semibold">Stage</th>
                 <th className="px-4 py-3" />
@@ -99,6 +100,18 @@ export function RankedList() {
                   </td>
                   <td className="px-4 py-4">
                     <SourceDot source={c.source} label />
+                  </td>
+                  <td className="px-4 py-4 text-xs text-ink">
+                    {c.salarySignal ? (
+                      <>
+                        <p className="font-semibold">{c.salarySignal}</p>
+                        {c.noticePeriod ? (
+                          <p className="text-ink-muted">Notice: {c.noticePeriod}</p>
+                        ) : null}
+                      </>
+                    ) : (
+                      <span className="text-ink-muted">—</span>
+                    )}
                   </td>
                   <td className="px-4 py-4">
                     <MatchBadge score={c.matchScore} gaps={c.gaps} />

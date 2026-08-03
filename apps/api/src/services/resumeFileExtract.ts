@@ -1,9 +1,5 @@
-import { createRequire } from "module";
 import mammoth from "mammoth";
-
-const require = createRequire(import.meta.url);
-// pdf-parse is CJS; default export is the parse function
-const pdfParse = require("pdf-parse") as (buf: Buffer) => Promise<{ text: string }>;
+import { PDFParse } from "pdf-parse";
 
 const MAX_BYTES = 8 * 1024 * 1024; // 8 MB
 
@@ -18,9 +14,28 @@ function extOf(name: string): string {
   return i >= 0 ? name.slice(i + 1).toLowerCase() : "";
 }
 
-function candidateNameFromFile(fileName: string): string | undefined {
-  const base = fileName.replace(/\.[^.]+$/, "").replace(/[_-]+/g, " ").trim();
-  return base.length >= 2 ? base.slice(0, 80) : undefined;
+/** Soft hint only — real name should come from resume text. */
+function candidateNameHintFromFile(fileName: string): string | undefined {
+  const base = fileName
+    .replace(/\.[^.]+$/, "")
+    .replace(/[_]+/g, " ")
+    .replace(/\b\d+(\.\d+)?\s*\+?\s*years?\b.*$/i, "")
+    .replace(/\b(angular|react|node|java|python|full\s*stack|developer|engineer|resume|cv)\b.*$/i, "")
+    .replace(/[-–—|]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  if (base.length < 2 || base.length > 40 || /\d/.test(base)) return undefined;
+  return base;
+}
+
+async function extractPdfText(buf: Buffer): Promise<string> {
+  const parser = new PDFParse({ data: new Uint8Array(buf) });
+  try {
+    const result = await parser.getText();
+    return result.text ?? "";
+  } finally {
+    await parser.destroy().catch(() => undefined);
+  }
 }
 
 export async function extractTextFromUpload(file: UploadFileInput): Promise<{
@@ -40,8 +55,7 @@ export async function extractTextFromUpload(file: UploadFileInput): Promise<{
   if (ext === "txt" || ext === "md" || mime.startsWith("text/")) {
     text = buf.toString("utf8");
   } else if (ext === "pdf" || mime === "application/pdf") {
-    const parsed = await pdfParse(buf);
-    text = parsed.text ?? "";
+    text = await extractPdfText(buf);
   } else if (
     ext === "docx" ||
     mime === "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
@@ -57,10 +71,9 @@ export async function extractTextFromUpload(file: UploadFileInput): Promise<{
   const resumeText = text.replace(/\r\n/g, "\n").replace(/\n{3,}/g, "\n\n").trim();
   if (resumeText.length < 40) throw new Error("resume_too_short");
 
-  const fromFile = candidateNameFromFile(file.fileName);
   return {
     resumeText,
-    candidateName: fromFile || undefined,
+    candidateName: candidateNameHintFromFile(file.fileName),
     fileName: file.fileName,
   };
 }
